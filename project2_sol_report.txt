@@ -1,0 +1,90 @@
+1. Meta-data
+- Show your meta-data design (Tables and Columns table) and information about each column.
+
+Tables:
+(table-id:int, table-name:varchar(50), file-name:varchar(50), system:int)
+table-id: The table's ID. Matches the table-id in the Columns table.
+table-name: The table's name.
+file-name: The name of the file that holds this table's records.
+system: A value of 1 denotes a system table, which cannot be modified.
+
+Columns:
+table-id: The table's ID. Matches the table-id in the Tables table.
+column-name: The name of this column. Corresponds to the name field in the Attribute struct.
+column-type: The type of this column. Corresponds to the type field in the Attribute struct.
+column-length: The length of this column. Corresponds to the length field in the Attribute struct.
+column-position: The position of this column in a record descriptor.
+
+2. Internal Record Format
+- Show your record format design and describe how your design satisfies O(1) field access. If not, just mention that your team hasn't implemented this feature.
+
+[Record Length (2) | NULL indicator | Directory of offsets (2 * N) | Data]
+
+The first 2 bytes contain the number of entries in the record.
+
+Following that is the NULL indicator, in the same format as in the API.
+
+Next is a directory of offsets to the end of each attribute. Each of these offsets is 2 bytes long.
+To access a field in O(1) time:
+* Check null indicator to see if field is null
+	* If it is, return
+* Find the end offset in the directory of offsets
+	* Relative to the start of the record this will be at (sizeof(Record Length) + sizeof(NULL indicator) + i * (sizeof(Column offset)))
+	* Notice this can be obtained in O(1) time.
+* Find the start offset of the field
+	* If i > 0, this will be the end offset of field (i-1)
+	* Otherwise, this will be the start of the Data portion of the record which is at: sizeof(Record Length) + sizeof(NULL indicator) + N * sizeof(Column Offset)
+* Knowing the start and end of the field gives enough information to access the field
+
+- Describe how you store a VarChar field.
+
+VarChars are stored by simply placing each character into the data portion of the record. The length is encoded within the end offset and start offset
+of the VarChar.
+
+3. Page Format
+- Show your page format design.
+- Describe how you deal with an update and delete.
+
+Each page has a header containing the total number of entries as well as a pointer to the start of record data (which is also the end of free space)
+
+Following that header there is a directory of Slot Headers. Each slot header contains an offset to the start of its associated record, as well
+as an integer containing the length of that record.
+
+A valid record must have both a positive length and a positive offset.
+
+A 0 for both the length and the offset denotes a record that has been deleted.
+
+A positive value for the length and a non-positive (<= 0) value for the offset denotes a record that has been moved. In this case, length represents
+the page number of the records new RID, and offset represents the negative slot number.
+
+To delete a file, the file's slot header is marked as deleted (both 0s), then the space within the file is reorganized (see implementation detail).
+For files that have been forwarded, this operation is recursive.
+
+To update a file there are 3 cases:
+* If the updated record is the same size as the current record, then it is updated in place.
+* If the updated record is smaller than the current record, then it is updated in place and the page is reorganized.
+* If the updated record is larger than the current record:
+	* And if the new record will not fit in the page, then the record is inserted into a page with room and the header of the original record
+	  is set to forward the new address. The page is then reorganized to remove the old record data.
+	* If the new record will fit in the page, then the record header is temporarily marked as deleted and the page is reorganized. With the
+	  free space consolidated in the middle, the new record is inserted as normal.
+
+4. File Format
+- Show your file format design
+
+Each created table has a file with a name: <tablename>.t
+
+5. Implementation Detail
+- Other implementation details goes here.
+
+Reorganize page:
+
+To consolidate free space, we look at all of the valid entries on the page and sort them in order of descending offset. We then move each
+entry as far to the end of the page as possible to remove any gaps between them. A poor illustration can be found below:
+
+[Header|SlotDirectory|  Free Space     | Record1   | gap | record 2   | record 3  | gap|]
+[Header|SlotDirectory|  Free Space     | Record1   | gap | record 2   | record 3->| gap|]
+[Header|SlotDirectory|  Free Space     | Record1   | gap | record 2-> | gap| record 3  |]
+[Header|SlotDirectory|  Free Space     | Record1-> | gap | gap| record 2   | record 3  |]
+[Header|SlotDirectory|  Free Space                | Record1   | record 2   | record 3  |]
+
