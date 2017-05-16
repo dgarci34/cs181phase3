@@ -1,12 +1,18 @@
+
 #ifndef _ix_h_
 #define _ix_h_
 
 #include <vector>
 #include <string>
+#include <iostream>
 
 #include "../rbf/rbfm.h"
 
 # define IX_EOF (-1)  // end of the index scan
+#define IX_CREATE_ERROR 1
+#define IX_DESTROY_ERROR 2
+
+using namespace std;
 
 class IX_ScanIterator;
 class IXFileHandle;
@@ -51,7 +57,9 @@ class IndexManager {
         ~IndexManager();
 
     private:
+        bool pfmPtr;
         static IndexManager *_index_manager;
+    PagedFileManager * pfm;
 };
 
 
@@ -90,6 +98,11 @@ class IXFileHandle {
 	// Put the current counter values of associated PF FileHandles into variables
 	RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
 
+    private:
+    
+    FILE *_fd;
+    void setfd(FILE*fd);
+    FILE *getfd();
 };
 
 #endif

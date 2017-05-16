@@ -17,20 +17,33 @@ IndexManager::IndexManager()
 
 IndexManager::~IndexManager()
 {
+    if (pfmPtr)
+        free(pfm);
+        
 }
 
 RC IndexManager::createFile(const string &fileName)
 {
-    return -1;
+    cout<<"creating file\n";
+    pfm = PagedFileManager::instance();
+    if (pfm->createFile(fileName))
+        return IX_CREATE_ERROR;
+    return SUCCESS;
 }
 
 RC IndexManager::destroyFile(const string &fileName)
 {
-    return -1;
+    pfm = PagedFileManager::instance();
+    if (pfm->destroyFile(fileName))
+        return IX_DESTROY_ERROR;
+    return SUCCESS;
 }
 
 RC IndexManager::openFile(const string &fileName, IXFileHandle &ixfileHandle)
 {
+   // pfm = PagedFileManager::instance();
+   // if (pfm->openFile(fileName, ixfileHandle))
+   //     return IX_OPEN_ERROR;
     return -1;
 }
 
