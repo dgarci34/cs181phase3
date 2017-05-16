@@ -19,7 +19,6 @@ IndexManager::~IndexManager()
 {
     if (pfmPtr)
         free(pfm);
-        
 }
 
 RC IndexManager::createFile(const string &fileName)
@@ -111,4 +110,3 @@ RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePa
 {
     return -1;
 }
-

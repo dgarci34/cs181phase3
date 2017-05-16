@@ -1,4 +1,3 @@
-
 #ifndef _ix_h_
 #define _ix_h_
 
@@ -16,6 +15,35 @@ using namespace std;
 
 class IX_ScanIterator;
 class IXFileHandle;
+
+class BTree;
+
+class Node;
+
+class BTree{
+public:
+  BTree();
+  ~BTree();
+
+private:
+    Node * leftMost;      //pointer to leftmost leaf node
+    Node * Root;          //top node
+};
+
+class Node{
+public:
+  Node();
+  ~Node();
+private:
+  void * firstEntry;      //data entries inside
+  void * secondEntry;
+  void * thirdEntry;
+  void * fourthEntry;
+  Node * leftNeighbor;    //pointer to left
+  Node * parent;          //pointer to parent node
+  Node * rightNeighbor;
+  void printSelf();       //prints itself
+};
 
 class IndexManager {
 
@@ -99,7 +127,7 @@ class IXFileHandle {
 	RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
 
     private:
-    
+    string FIleName;
     FILE *_fd;
     void setfd(FILE*fd);
     FILE *getfd();
