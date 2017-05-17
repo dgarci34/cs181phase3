@@ -1,5 +1,7 @@
 
 #include "ix.h"
+#include <sys/stat.h>
+#include <sys/types.h>
 
 IndexManager* IndexManager::_index_manager = 0;
 
@@ -23,7 +25,7 @@ IndexManager::~IndexManager()
 
 RC IndexManager::createFile(const string &fileName)
 {
-    cout<<"creating file\n";
+    //cout<<"creating file\n";
     pfm = PagedFileManager::instance();
     if (pfm->createFile(fileName))
         return IX_CREATE_ERROR;
@@ -40,15 +42,34 @@ RC IndexManager::destroyFile(const string &fileName)
 
 RC IndexManager::openFile(const string &fileName, IXFileHandle &ixfileHandle)
 {
-   // pfm = PagedFileManager::instance();
-   // if (pfm->openFile(fileName, ixfileHandle))
-   //     return IX_OPEN_ERROR;
-    return -1;
+    //check for a double open
+   if(ixfileHandle.getFd() != NULL)
+       return IX_HANDLE_IN_USE;
+    //check for file existance
+    if(!fileExists(fileName.c_str()))
+        return IX_FILE_DN_EXIST;
+    //open file and attach
+    FILE *pFile;
+    pFile = fopen(fileName.c_str(), "rb+");
+    // If we fail, error
+    if (pFile == NULL)
+        return IX_OPEN_FAILED;
+    ixfileHandle.setFd(pFile);
+    return SUCCESS;
 }
 
 RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 {
-    return -1;
+    FILE *pFile = ixfileHandle.getFd();
+    
+    // If not an open file, error
+    if (pFile == NULL)
+        return IX_NOT_OPEN;
+    
+    // Flush and close the file
+    fclose(pFile);
+    ixfileHandle.setFd(NULL);
+    return SUCCESS;
 }
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
@@ -94,6 +115,13 @@ RC IX_ScanIterator::close()
     return -1;
 }
 
+bool IndexManager::fileExists(const string &fileName)
+{
+    // If stat fails, we can safely assume the file doesn't exist
+    struct stat sb;
+    return stat(fileName.c_str(), &sb) == 0;
+}
+
 
 IXFileHandle::IXFileHandle()
 {
@@ -114,6 +142,14 @@ RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePa
     return SUCCESS;
 }
 
+void IXFileHandle::setFd(FILE * file){
+    _file = file;           //set file pointer
+}
+
+FILE * IXFileHandle::getFd(){
+    return _file;           //return the file pointer
+}
+
 RC IXFileHandle::writePage(PageNum pageNum, void * data){
   return -1;
 }
@@ -122,6 +158,6 @@ RC IXFileHandle::readPage(PageNum pageNum, void * data){
   return -1;
 }
 
-RC IXFileHandle::appendPage(void * data);{
+RC IXFileHandle::appendPage(void * data){
   return -1;
 }

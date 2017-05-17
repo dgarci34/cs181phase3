@@ -10,6 +10,10 @@
 # define IX_EOF (-1)  // end of the index scan
 #define IX_CREATE_ERROR 1
 #define IX_DESTROY_ERROR 2
+#define IX_HANDLE_IN_USE 3
+#define IX_FILE_DN_EXIST 4
+#define IX_OPEN_FAILED 5
+#define IX_NOT_OPEN 6
 
 using namespace std;
 
@@ -61,8 +65,9 @@ class IndexManager {
         ~IndexManager();
 
     private:
-        bool pfmPtr;
-        static IndexManager *_index_manager;
+    bool fileExists(const string &fileName);
+    bool pfmPtr;
+    static IndexManager *_index_manager;
     PagedFileManager * pfm;
 };
 
@@ -89,7 +94,7 @@ class IXFileHandle {
     public:
 
     string fileName;
-    FILE * _file;
+
     // variables to keep counter for each operation
     unsigned ixReadPageCounter;
     unsigned ixWritePageCounter;
@@ -108,8 +113,14 @@ class IXFileHandle {
 
 	// Put the current counter values of associated PF FileHandles into variables
 	RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
-
+    
+    friend class IndexManager;
     private:
+    //private helpers
+    FILE * _file;
+    void setFd(FILE * file);
+    FILE * getFd();
+
 };
 
 #endif
