@@ -74,6 +74,7 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
+    cout<< "in insert "<<rid.pageNum<< " "<< rid.slotNum<<endl;
     return -1;
 }
 
@@ -140,6 +141,15 @@ RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePa
   ixWritePageCounter = writePageCount;
   ixAppendPageCounter = appendPageCount;
     return SUCCESS;
+}
+
+unsigned IXFileHandle::getNumberOfPages(){
+    // Use stat to get the file size
+    struct stat sb;
+    if (fstat(fileno(_file), &sb) != 0) //no pages
+        return 0;
+    // Filesize is always PAGE_SIZE * number of pages
+    return (sb.st_size / PAGE_SIZE);
 }
 
 void IXFileHandle::setFd(FILE * file){
