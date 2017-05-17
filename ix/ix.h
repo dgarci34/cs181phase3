@@ -16,34 +16,10 @@ using namespace std;
 class IX_ScanIterator;
 class IXFileHandle;
 
-class BTree;
+typedef struct
+{
 
-class Node;
-
-class BTree{
-public:
-  BTree();
-  ~BTree();
-
-private:
-    Node * leftMost;      //pointer to leftmost leaf node
-    Node * Root;          //top node
-};
-
-class Node{
-public:
-  Node();
-  ~Node();
-private:
-  void * firstEntry;      //data entries inside
-  void * secondEntry;
-  void * thirdEntry;
-  void * fourthEntry;
-  Node * leftNeighbor;    //pointer to left
-  Node * parent;          //pointer to parent node
-  Node * rightNeighbor;
-  void printSelf();       //prints itself
-};
+}Node;
 
 class IndexManager {
 
@@ -112,11 +88,18 @@ class IX_ScanIterator {
 class IXFileHandle {
     public:
 
+    string fileName;
+    FILE * _file;
     // variables to keep counter for each operation
     unsigned ixReadPageCounter;
     unsigned ixWritePageCounter;
     unsigned ixAppendPageCounter;
 
+    RC writePage(PageNum pageNum, void * data);
+    RC readPage(PageNum pageNum, void * data);
+    RC appendPage(void * data);
+
+    unsigned getNumberOfPages();
     // Constructor
     IXFileHandle();
 
@@ -127,10 +110,6 @@ class IXFileHandle {
 	RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
 
     private:
-    string FIleName;
-    FILE *_fd;
-    void setfd(FILE*fd);
-    FILE *getfd();
 };
 
 #endif

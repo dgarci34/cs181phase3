@@ -108,5 +108,20 @@ IXFileHandle::~IXFileHandle()
 
 RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount)
 {
-    return -1;
+  ixReadPageCounter = readPageCount;
+  ixWritePageCounter = writePageCount;
+  ixAppendPageCounter = appendPageCount;
+    return SUCCESS;
+}
+
+RC IXFileHandle::writePage(PageNum pageNum, void * data){
+  return -1;
+}
+
+RC IXFileHandle::readPage(PageNum pageNum, void * data){
+  return -1;
+}
+
+RC IXFileHandle::appendPage(void * data);{
+  return -1;
 }
