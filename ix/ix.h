@@ -14,15 +14,23 @@
 #define IX_FILE_DN_EXIST 4
 #define IX_OPEN_FAILED 5
 #define IX_NOT_OPEN 6
+#define NODE_KEY_EMPTY 0b0000
+#define NODE_KEY_POINTER 0b0001
+#define NODE_KEY_OCCUPIED 0b0010
 
 using namespace std;
 
 class IX_ScanIterator;
 class IXFileHandle;
 
-typedef struct
-{
+typedef enum{ child =0, index, root }NodeType;
 
+typedef struct{
+  unsigned short leftNodeOffset;        //pointer to neighbors
+  unsigned short rightNodeOffset;
+  unsigned short keyOffset[120];        //fanout of 120
+  unsigned short numOfEntries;
+  NodeType nodeType;
 }Node;
 
 class IndexManager {
@@ -65,6 +73,13 @@ class IndexManager {
         ~IndexManager();
 
     private:
+    //private node methods
+    void setNodeAtOffset(unsigned off, Node node);
+    void getNodeAtOffset(unsigned off, Node node);
+    unsigned splitNodeAtOffset(unsigned off);
+    unsigned mergeLeftNodeAtOffset(unsigned off);
+    unsigned mergeRightNodeAtOffset(unsigned off);
+    void setKey(unsigned keyNum, void* data, unsigned size);
     bool fileExists(const string &fileName);
     bool pfmPtr;
     static IndexManager *_index_manager;
@@ -113,7 +128,7 @@ class IXFileHandle {
 
 	// Put the current counter values of associated PF FileHandles into variables
 	RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
-    
+
     friend class IndexManager;
     private:
     //private helpers

@@ -42,30 +42,30 @@ RC IndexManager::destroyFile(const string &fileName)
 
 RC IndexManager::openFile(const string &fileName, IXFileHandle &ixfileHandle)
 {
+  //check for file existance
+  if(!fileExists(fileName.c_str()))
+      return IX_FILE_DN_EXIST;
     //check for a double open
-   if(ixfileHandle.getFd() != NULL)
-       return IX_HANDLE_IN_USE;
-    //check for file existance
-    if(!fileExists(fileName.c_str()))
-        return IX_FILE_DN_EXIST;
-    //open file and attach
-    FILE *pFile;
-    pFile = fopen(fileName.c_str(), "rb+");
-    // If we fail, error
-    if (pFile == NULL)
-        return IX_OPEN_FAILED;
-    ixfileHandle.setFd(pFile);
-    return SUCCESS;
+  if(ixfileHandle.getFd() != NULL)
+    return IX_HANDLE_IN_USE;
+  //open file and attach
+  FILE *pFile;
+  pFile = fopen(fileName.c_str(), "rb+");
+  // If we fail, error
+  if (pFile == NULL)
+      return IX_OPEN_FAILED;
+  ixfileHandle.setFd(pFile);
+  return SUCCESS;
 }
 
 RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 {
     FILE *pFile = ixfileHandle.getFd();
-    
+
     // If not an open file, error
     if (pFile == NULL)
         return IX_NOT_OPEN;
-    
+
     // Flush and close the file
     fclose(pFile);
     ixfileHandle.setFd(NULL);
@@ -75,6 +75,7 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
     cout<< "in insert "<<rid.pageNum<< " "<< rid.slotNum<<endl;
+    cout<<sizeof(Node)<<endl;
     return -1;
 }
 
@@ -129,10 +130,12 @@ IXFileHandle::IXFileHandle()
     ixReadPageCounter = 0;
     ixWritePageCounter = 0;
     ixAppendPageCounter = 0;
+    _file = NULL;
 }
 
 IXFileHandle::~IXFileHandle()
 {
+  _file = NULL;
 }
 
 RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount)
