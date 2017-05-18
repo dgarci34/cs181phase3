@@ -75,9 +75,40 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
     cout<< "in insert "<<rid.pageNum<< " "<< rid.slotNum<<endl;
-    cout<<sizeof(Node)<<endl;
+    cout<<(sizeof(Node) + (sizeof(RID)* 92) + (34*92))<<endl;
+	//get number of pages
+	unsigned pages = ixfileHandle.getNumberOfPages();
+	//if no pages create node and insert
+	void * pageData = malloc(PAGE_SIZE);
+	Node node;
+	if (!pages){
+		if (initializeBTree(pageData, node)){
+			free(pageData);
+			return IX_INIT_FAILED;		//initializing failed
+		}
+	}
+	//if pages find coresponding node
+		//if space insert key, id done
+		//if no space split node 
+		
+	free(pageData);
     return -1;
 }
+//pass in a blank page, initialize and append it
+RC IndexManager::initializeBTree( void * newPage,Node &newNode, IXfileHandle &ixfileHandle){
+	newNode.numOfEntries =0;					//initialize entries number
+	newNode.nodeType = leaf;					//set type
+	newNode.keyOffset[0] = sizeof(Node);		//where to begin writing keys
+	ixfileHandle.rootPage =0;					//the root page is defined
+	setNodeOnPage(newPage, newNode);			//insert node
+	return ixfileHandle.appendPage(newPage);			//add node page to file
+}
+
+//set node header to top of page
+void IndexManager::setNodeOnPage(void * page, Node node){
+	memcpy(page, &node, sizeof(Node));
+}
+
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {

@@ -4,6 +4,8 @@
 #include <vector>
 #include <string>
 #include <iostream>
+#include <stdio.h>
+#include <string.h>
 
 #include "../rbf/rbfm.h"
 
@@ -14,21 +16,20 @@
 #define IX_FILE_DN_EXIST 4
 #define IX_OPEN_FAILED 5
 #define IX_NOT_OPEN 6
-#define NODE_KEY_EMPTY 0b0000
-#define NODE_KEY_POINTER 0b0001
-#define NODE_KEY_OCCUPIED 0b0010
+#define IX_INIT_FAILED 7
 
 using namespace std;
 
 class IX_ScanIterator;
 class IXFileHandle;
 
-typedef enum{ child =0, index, root }NodeType;
+typedef enum{ leaf =0, intermidate }NodeType;
 
 typedef struct{
-  unsigned short leftNodeOffset;        //pointer to neighbors
-  unsigned short rightNodeOffset;
-  unsigned short keyOffset[120];        //fanout of 120
+  unsigned short leftNodePage;        //pointer to neighbors
+  unsigned short ParentNodePage;
+  unsigned short rightNodePage;
+  unsigned short keyOffset[92];        //fanout of 120
   unsigned short numOfEntries;
   NodeType nodeType;
 }Node;
@@ -74,12 +75,14 @@ class IndexManager {
 
     private:
     //private node methods
-    void setNodeAtOffset(unsigned off, Node node);
-    void getNodeAtOffset(unsigned off, Node node);
-    unsigned splitNodeAtOffset(unsigned off);
-    unsigned mergeLeftNodeAtOffset(unsigned off);
-    unsigned mergeRightNodeAtOffset(unsigned off);
+    void setNodeOnPage(void * page, Node node);
+    void getNodeOnPage(void * page, Node node);
+    unsigned splitNodeAtPage(unsigned pageNum);
+    unsigned mergeLeftNodeAtPage(unsigned pageNum);
+    unsigned mergeRightNodeAtPage(unsigned pageNum);
     void setKey(unsigned keyNum, void* data, unsigned size);
+	RC initializeBTree(void * newPage, Node &newNode, IXfileHandle ixfileHandle);
+	
     bool fileExists(const string &fileName);
     bool pfmPtr;
     static IndexManager *_index_manager;
@@ -109,6 +112,7 @@ class IXFileHandle {
     public:
 
     string fileName;
+	unsigned short rootPage; //where the root page lies
 
     // variables to keep counter for each operation
     unsigned ixReadPageCounter;
