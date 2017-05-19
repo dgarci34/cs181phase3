@@ -17,6 +17,10 @@
 #define IX_OPEN_FAILED 5
 #define IX_NOT_OPEN 6
 #define IX_INIT_FAILED 7
+#define IX_APPEND_FAILED 8
+#define IX_WRITE_FAILED 9
+#define IX_PAGE_DN_EXIST 10
+#define IX_READ_FAILED 11
 
 using namespace std;
 
@@ -76,13 +80,14 @@ class IndexManager {
     private:
     //private node methods
     void setNodeOnPage(void * page, Node node);
-    void getNodeOnPage(void * page, Node node);
+    Node getNodeOnPage(void * page);
     unsigned splitNodeAtPage(unsigned pageNum);
     unsigned mergeLeftNodeAtPage(unsigned pageNum);
     unsigned mergeRightNodeAtPage(unsigned pageNum);
     void setKey(unsigned keyNum, void* data, unsigned size);
-	RC initializeBTree(void * newPage, Node &newNode, IXfileHandle ixfileHandle);
-	
+	RC initializeBTree(void * newPage,Node &newNode, IXFileHandle &ixfileHandle,
+                       const void * data, const RID &rid, const Attribute &attribute);
+    unsigned getKeySize(const Attribute attribute, void * key);
     bool fileExists(const string &fileName);
     bool pfmPtr;
     static IndexManager *_index_manager;
@@ -112,7 +117,7 @@ class IXFileHandle {
     public:
 
     string fileName;
-	unsigned short rootPage; //where the root page lies
+	PageNum rootPage; //where the root page lies
 
     // variables to keep counter for each operation
     unsigned ixReadPageCounter;
