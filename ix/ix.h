@@ -87,7 +87,7 @@ class IndexManager {
     void setKey(unsigned keyNum, void* data, unsigned size);
 	RC initializeBTree(void * newPage,Node &newNode, IXFileHandle &ixfileHandle,
                        const void * data, const RID &rid, const Attribute &attribute);
-    unsigned getKeySize(const Attribute attribute, void * key);
+    unsigned getKeySize(AttrType att, const void* key);
     bool fileExists(const string &fileName);
     bool pfmPtr;
     static IndexManager *_index_manager;

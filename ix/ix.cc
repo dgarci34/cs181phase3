@@ -90,24 +90,27 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     cout<< "retriving root\n";
     ixfileHandle.readPage(ixfileHandle.rootPage,pageData);
     node = getNodeOnPage(pageData);
-    
+
 	//if pages find root
         //if index node go to position then attempt to do insert at where it points to
-    
+
 		//if space insert key, id done
-		//if no space split node 
-		
+		//if no space split node
+
 	free(pageData);
     return -1;
 }
 //pass in a blank page, initialize and append it
 RC IndexManager::initializeBTree(void * newPage,Node &newNode, IXFileHandle &ixfileHandle,
                                  const void * data, const RID &rid, const Attribute &attribute){
-    
+
 	newNode.numOfEntries =0;					//initialize entries number
 	newNode.nodeType = leaf;					//set type
 	newNode.keyOffset[0] = sizeof(Node);		//where to begin writing keys
-    unsigned keySize = getKeySize();                         //use helper function to determine size
+  unsigned keySize = getKeySize(attribute.type, data);                         //use helper function to determine size
+//  cout<< "size: "<<keySize<<endl;
+  memcpy(newPage + newNode.keyOffset[0], data, keySize);        //sey key in page
+  memcpy(newPage + newNode.keyOffset[0] + keySize, &rid, sizeof(RID)); //set rid in page
 	ixfileHandle.rootPage = 0;					//the root page is defined
 	setNodeOnPage(newPage, newNode);			//insert node
 	return ixfileHandle.appendPage(newPage);			//add node page to file
@@ -125,15 +128,19 @@ Node IndexManager::getNodeOnPage(void * page){
     return node;
 }
 
-unsigned getKeySize(const Attribute attribute, void * key){
-    switch (attribute.type)) {
-        case Typereal:
-            return REAL
+unsigned IndexManager::getKeySize(AttrType att,const  void * key){
+    switch (att) {
+        case TypeReal:
+            return REAL_SIZE;
             break;
-            
-        default:
+        case TypeInt:
+            return INT_SIZE;
+        case TypeVarChar:
+            int * size = (int *)key;
+            return size[0] + INT_SIZE; //the size plus the leading int
             break;
     }
+  return -1;        //should not reach here
 }
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
@@ -225,11 +232,11 @@ RC IXFileHandle::writePage(PageNum pageNum, void * data)
     // Check if the page exists
     if (getNumberOfPages() < pageNum)
         return IX_PAGE_DN_EXIST;
-    
+
     // Seek to the start of the page
     if (fseek(_file, PAGE_SIZE * pageNum, SEEK_SET))
         return IX_WRITE_FAILED;
-    
+
     // Write the page
     if (fwrite(data, 1, PAGE_SIZE, _file) == PAGE_SIZE)
     {
@@ -238,7 +245,7 @@ RC IXFileHandle::writePage(PageNum pageNum, void * data)
         ixWritePageCounter++;
         return SUCCESS;
     }
-    
+
     return IX_WRITE_FAILED;
 }
 
@@ -247,15 +254,15 @@ RC IXFileHandle::readPage(PageNum pageNum, void * data)
     // If pageNum doesn't exist, error
     if (getNumberOfPages() < pageNum)
         return IX_PAGE_DN_EXIST;
-    
+
     // Try to seek to the specified page
     if (fseek(_file, PAGE_SIZE * pageNum, SEEK_SET))
         return IX_READ_FAILED;
-    
+
     // Try to read the specified page
     if (fread(data, 1, PAGE_SIZE, _file) != PAGE_SIZE)
         return IX_READ_FAILED;
-    
+
     ixReadPageCounter++;
     return SUCCESS;
 }
@@ -265,7 +272,7 @@ RC IXFileHandle::appendPage(void * data)
     // Seek to the end of the file
     if (fseek(_file, 0, SEEK_END))
         return IX_APPEND_FAILED;
-    
+
     // Write the new page
     if (fwrite(data, 1, PAGE_SIZE, _file) == PAGE_SIZE)
     {
