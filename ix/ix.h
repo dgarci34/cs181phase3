@@ -9,7 +9,7 @@
 
 #include "../rbf/rbfm.h"
 
-# define IX_EOF (-1)  // end of the index scan
+#define IX_EOF (-1)  // end of the index scan
 #define IX_CREATE_ERROR 1
 #define IX_DESTROY_ERROR 2
 #define IX_HANDLE_IN_USE 3
@@ -21,6 +21,14 @@
 #define IX_WRITE_FAILED 9
 #define IX_PAGE_DN_EXIST 10
 #define IX_READ_FAILED 11
+#define IX_ENTRY_DOES_NOT_EXIST 12
+#define IX_TYPE_ERROR 13
+#define IX_KEY_DOES_NOT_EXIST 14
+
+#define NO_PAGE 0
+#define NO_ENTRIES 0
+#define INITIAL_HEIGHT 0
+#define INITIAL_PAGE 1
 
 using namespace std;
 
@@ -29,12 +37,19 @@ class IXFileHandle;
 
 typedef enum{ alive = 0, dead } ixStatus;
 
+// IndexID
+typedef struct IndexID {
+    unsigned pageId;
+    unsigned entryId;
+} IndexID;
+
 // Meta
 typedef struct MetaHeader {
     unsigned rootPage;
     unsigned numOfInternalNodes;
     unsigned numOfLeafNodes;
     unsigned height;
+    AttrType type;
 } MetaHeader;
 
 // Internal Node
@@ -115,8 +130,23 @@ class IndexManager {
     bool fileExists(const string &fileName);
     void setKey(unsigned keyNum, void* data, unsigned size);
     unsigned getKeySize(AttrType att, const void* key);
+    RC search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexID * indexId);
 
     // ****************************Node helper functions************************
+    void initializeBTree(IXFileHandle ixfileHandle);
+    MetaHeader getMetaHeader(void * page);
+    LeafNodeHeader getLeafNodeHeader(void * page);
+    InternalNodeHeader getInternalNodeHeader(void * page);
+    LeafNodeEntry getLeafNodeEntry(void * page, unsigned slotNumber);
+    InternalNodeEntry getInternalNodeEntry(void * page, unsigned slotNumber);
+    void setMetaHeader(void * page, MetaHeader metaHeader);
+    void setLeafNodeHeader(void * page, LeafNodeHeader leafNodeHeader);
+    void setInternalNodeHeader(void * page, InternalNodeHeader internalNodeHeader);
+    void setLeafNodeEntry(void * page, LeafNodeEntry leafNodeEntry, unsigned slotNumber);
+    void setInternalNodeEntry(void * page, InternalNodeEntry internalNodeEntry, unsigned slotNumber);
+    void setLeafKeyAndRidAtOffset(void * page, const Attribute &attribute, const void *key,
+    const RID &rid, unsigned offset, unsigned keylength);
+    void setInternalKeyAtOffset(void * page, const Attribute &attribute, const void *key, unsigned keylength, unsigned offset);    
 
 };
 

@@ -234,4 +234,184 @@ unsigned IndexManager::getKeySize(AttrType att,const  void * key){
   return -1;        //should not reach here
 }
 
+RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexID * indexID)
+{
+    // get the root page number and the height of the tree
+    MetaHeader tempMetaHeader;
+    void * page = calloc(PAGE_SIZE);
+    unsigned rootPage;
+    unsigned height;
+    
+
+    if (ixfileHandle.readPage(0, page))
+        return IX_READ_FAILED;
+
+    tempMetaHeader = getMetaHeader(page);
+    rootPage = tempMetaHeader.rootPage;
+    height = tempMetaHeader.height;
+
+    // read the root page and compare the key
+    LeafNodeHeader tempLeafNodeHeader;
+    LeafNodeEntry tempLeafNodeEntry;
+
+    if (ixfileHandle.readPage(rootPage, page))
+        return IX_READ_FAILED;
+
+    // Tree has only 1 node (root)
+    if (height == 0) {
+        tempLeafNodeHeader = getLeafNodeHeader(page);
+        
+        // no entry in the B+ tree 
+        if (tempLeafNodeHeader.numOfEntries == 0)
+        {
+            free(page);
+            return IX_ENTRY_DOES_NOT_EXIST;
+        }
+
+        // at least 1 entry in the tree
+        for (unsigned i = 0; i < tempLeafNodeHeader.numOfEntries; i++)
+        {
+            tempLeafNodeEntry = getLeafNodeEntry(page, i);
+            
+            // compare the key if the entry is NOT deleted
+            if (tempLeafNodeEntry.status == alive)
+            {
+                switch (tempMetaHeader.type):
+                    case TypeInt:
+                        int * tempKey = (int*) key;
+                        int entryKey;
+                        memcpy(&entryKey, (page + tempLeafNodeEntry.offset), sizeof(int));
+                        
+                        // target key is found
+                        if (entryKey[0] == tempKey[0])
+                        {
+                            indexID.pageID = rootPage;
+                            indexID.entryID = i;
+
+                            free(page);
+                            return SUCCESS;
+                        }
+
+                        // target key does not exist
+                        if (entryKey[0] > tempKey[0])
+                        {
+                            free(page);
+                            return IX_KEY_DOES_NOT_EXIST;
+                        }
+                        break;
+
+                    case TypeReal:
+                        break;
+                    case TypeVarChar:
+                        break;
+                    default:
+                        free(page)
+                        return IX_TYPE_ERROR;
+            }
+        }
+    }
+    
+    InternalNodeHeader tempInternalNodeHeader;
+    InternalNodeEntry tempInternalNodesEntry;
+
+    // free
+    free(page);
+
+    return -1;
+}
+
+// ****************************Node helper functions************************
+// initialize B+ Tree
+void IndexManager::initializeBTree(IXFileHandle ixfileHandle){
+    MetaHeader mHeader;
+    LeafNodeHeader lHeader;
+    void * metaPage = malloc(PAGE_SIZE);
+    void * firstPage = malloc(PAGE_SIZE);
+    mHeader.rootPage =INITIAL_PAGE;      //the first node in will be both a leaf and the root
+    mHeader.numOfLeafNodes = 1;
+    mHeader.numOfInternalNodes = NO_ENTRIES;
+    mHeader.height = INITIAL_HEIGHT;
+    lHeader.numOfEntries = NO_ENTRIES;
+    lHeader.parentPage = NO_PAGE;         //pointer pages are invalid at the begining
+    lHeader.leftNode = NO_PAGE;
+    lHeader.rightNode = NO_PAGE;
+    lHeader.freeSpaceOffset = PAGE_SIZE;  //no entries
+    setMetaHeader(metaPage, mHeader);
+    setLeafNodeHeader(firstPage, lHeader);
+    ixfileHandle.appendPage(metaPage);      //commit initial pages
+    ixfileHandle.appendPage(firstPage);
+    free(metaPage);
+    free(firstPage);
+}
+
+//returns the metaHeader from page 0
+MetaHeader IndexManager::getMetaHeader(void * page){
+    MetaHeader mHeader;
+    memcpy(&mHeader,page,sizeof(MetaHeader));
+    return mHeader;
+}
+
+//get leaf node header from passed in passed in page
+LeafNodeHeader IndexManager::getLeafNodeHeader(void * page){
+    LeafNodeHeader lHeader;
+    memcpy(&lHeader, page, sizeof(LeafNodeHeader));
+    return lHeader;
+}
+
+//get InternalNodeHeader
+InternalNodeHeader IndexManager::getInternalNodeHeader(void * page){
+    InternalNodeHeader iHeader;
+    memcpy(&iHeader, page, sizeof(InternalNodeHeader));
+    return iHeader;
+}
+
+//return a specific leaf node entry
+LeafNodeEntry IndexManager::getLeafNodeEntry(void * page, unsigned slotNumber){
+    LeafNodeEntry lEntry;
+    memcpy(&lEntry, page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * slotNumber), sizeof(LeafNodeEntry));
+    return lEntry;
+}
+
+//return a specific Internal node entry
+InternalNodeEntry IndexManager::getInternalNodeEntry(void * page, unsigned slotNumber){
+    InternalNodeEntry iEntry;
+    memcpy(&iEntry, page + sizeof(InternalNodeHeader) + (sizeof(InternalNodeEntry) * slotNumber), sizeof(InternalNodeEntry));
+    return iEntry;
+}
+
+//set a metaHeader to a page
+void IndexManager::setMetaHeader(void * page, MetaHeader metaHeader){
+    memcpy(page, &metaHeader, sizeof(MetaHeader));
+}
+
+//used to set  leaf header to a page
+void IndexManager::setLeafNodeHeader(void * page, LeafNodeHeader leafNodeHeader){
+    memcpy(page, &leafNodeHeader, sizeof(LeafNodeHeader));
+}
+
+//used to set an internal header to a page
+void IndexManager::setInternalNodeHeader(void * page, InternalNodeHeader internalNodeHeader){
+    memcpy(page, &internalNodeHeader, sizeof(InternalNodeHeader));
+}
+
+//used to set a leaf entry to a specific slot
+void IndexManager::setLeafNodeEntry(void * page, LeafNodeEntry leafNodeEntry, unsigned slotNumber){
+    memcpy(page + sizeof(LeafNodeHeader) + (slotNumber * sizeof(LeafNodeEntry)), &leafNodeEntry, sizeof(LeafNodeEntry));
+}
+
+//used to set an internal node entry to a specific slot
+void IndexManager::setInternalNodeEntry(void * page, InternalNodeEntry internalNodeEntry, unsigned slotNumber){
+    memcpy(page + sizeof(InternalNodeHeader) + (slotNumber * sizeof(InternalNodeEntry)), &internalNodeEntry, sizeof(InternalNodeEntry));
+}
+
+//adds the key followed by an rid to leaf page
+void IndexManager::setLeafKeyAndRidAtOffset(void * page, const Attribute &attribute, const void *key, const RID &rid, unsigned offset, unsigned keylength){
+  memcpy(page + offset - sizeof(RID), &rid, sizeof(RID));
+  memcpy(page + offset - sizeof(RID) - keylength, key, keylength);
+}
+
+//adds a key to a internal node page
+void IndexManager::setInternalKeyAtOffset(void * page, const Attribute &attribute, const void *key, unsigned keylength, unsigned offset){
+  memcpy(page + offset -keylength, key, keylength);
+}
 // *************************************************************************
