@@ -35,7 +35,7 @@ typedef struct MetaHeader {
     unsigned numOfInternalNodes;
     unsigned numOfLeafNodes;
     unsigned height;
-} metaHeader;
+} MetaHeader;
 
 // Internal Node
 typedef struct InternalNodeHeader {
@@ -116,7 +116,8 @@ class IndexManager {
     void setKey(unsigned keyNum, void* data, unsigned size);
     unsigned getKeySize(AttrType att, const void* key);
 
-    // *************************************************************************
+    // ****************************Node helper functions************************
+
 };
 
 
