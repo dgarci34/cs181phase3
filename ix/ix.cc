@@ -72,77 +72,6 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
     return SUCCESS;
 }
 
-RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
-{
-    cout<< "in insert "<<rid.pageNum<< " "<< rid.slotNum<<endl;
-    cout<<(sizeof(Node) + (sizeof(RID)* 92) + (34*92))<<endl;
-	//get number of pages
-	unsigned pages = ixfileHandle.getNumberOfPages();
-	//if no pages create node and insert
-	void * pageData = malloc(PAGE_SIZE);
-	Node node;
-	if (!pages){
-		if (initializeBTree(pageData, node, ixfileHandle, key, rid, attribute)){
-			free(pageData);
-			return IX_INIT_FAILED;		//initializing failed
-		}
-	}
-    cout<< "retriving root\n";
-    if (ixfileHandle.readPage(ixfileHandle.rootPage,pageData))  //get root page
-      return IX_READ_FAILED;
-    node = getNodeOnPage(pageData);
-
-        //if index node go to position then attempt to do insert at where it points to
-
-		//if space insert key, id done
-		//if no space split node
-
-	free(pageData);
-    return -1;
-}
-//pass in a blank page, initialize and append it
-RC IndexManager::initializeBTree(void * newPage,Node &newNode, IXFileHandle &ixfileHandle,
-                                 const void * data, const RID &rid, const Attribute &attribute){
-
-	newNode.numOfEntries =0;					//initialize entries number
-	newNode.nodeType = leaf;					//set type
-	newNode.keyOffset[0] = sizeof(Node);		//where to begin writing keys
-  unsigned keySize = getKeySize(attribute.type, data);                         //use helper function to determine size
-//  cout<< "size: "<<keySize<<endl;
-  memcpy(newPage + newNode.keyOffset[0], data, keySize);        //sey key in page
-  memcpy(newPage + newNode.keyOffset[0] + keySize, &rid, sizeof(RID)); //set rid in page
-	ixfileHandle.rootPage = 0;					//the root page is defined
-	setNodeOnPage(newPage, newNode);			//insert node
-	return ixfileHandle.appendPage(newPage);			//add node page to file
-}
-
-//set node header to top of page
-void IndexManager::setNodeOnPage(void * page, Node node){
-	memcpy(page, &node, sizeof(Node));
-}
-
-//retrieve node from top of page
-Node IndexManager::getNodeOnPage(void * page){
-    Node node;
-    memcpy(&node, page, sizeof(Node));
-    return node;
-}
-
-//return the length of the key
-unsigned IndexManager::getKeySize(AttrType att,const  void * key){
-    switch (att) {
-        case TypeReal:
-            return REAL_SIZE;
-            break;
-        case TypeInt:
-            return INT_SIZE;
-        case TypeVarChar:
-            int * size = (int *)key;
-            return size[0] + INT_SIZE; //the size plus the leading int
-            break;
-    }
-  return -1;        //should not reach here
-}
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
@@ -182,14 +111,6 @@ RC IX_ScanIterator::close()
 {
     return -1;
 }
-
-bool IndexManager::fileExists(const string &fileName)
-{
-    // If stat fails, we can safely assume the file doesn't exist
-    struct stat sb;
-    return stat(fileName.c_str(), &sb) == 0;
-}
-
 
 IXFileHandle::IXFileHandle()
 {
@@ -284,3 +205,29 @@ RC IXFileHandle::appendPage(void * data)
     }
     return IX_APPEND_FAILED;
 }
+
+// **************************** Helper Function ****************************
+bool IndexManager::fileExists(const string &fileName)
+{
+    // If stat fails, we can safely assume the file doesn't exist
+    struct stat sb;
+    return stat(fileName.c_str(), &sb) == 0;
+}
+
+//return the length of the key
+unsigned IndexManager::getKeySize(AttrType att,const  void * key){
+    switch (att) {
+        case TypeReal:
+            return REAL_SIZE;
+            break;
+        case TypeInt:
+            return INT_SIZE;
+        case TypeVarChar:
+            int * size = (int *)key;
+            return size[0] + INT_SIZE; //the size plus the leading int
+            break;
+    }
+  return -1;        //should not reach here
+}
+
+// *************************************************************************

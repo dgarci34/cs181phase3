@@ -27,16 +27,44 @@ using namespace std;
 class IX_ScanIterator;
 class IXFileHandle;
 
-typedef enum{ leaf =0, intermidate }NodeType;
+typedef enum{ alive = 0, dead } ixStatus;
 
-typedef struct{
-  unsigned short leftNodePage;        //pointer to neighbors
-  unsigned short ParentNodePage;
-  unsigned short rightNodePage;
-  unsigned short keyOffset[92];        //fanout of 120
-  unsigned short numOfEntries;
-  NodeType nodeType;
-}Node;
+// Meta 
+typedef struct MetaHeader {
+    unsigned rootPage;
+    unsigned numOfInternalNodes;
+    unsigned numOfLeafNodes;
+    unsigned height;
+} metaHeader;
+
+// Internal Node
+typedef struct InternalNodeHeader {
+    unsigned numOfEntries;
+    unsigned freeSpaceOffset;
+    unsigned parentPage;
+} InternalNodeHeader;
+
+typedef struct InternalNode {
+    unsigned offset;
+    unsigned length;
+    unsigned leftChild;
+    unsigned rightChild;
+} InternalNode;
+
+// Leaf Node
+typedef struct LeafNodeHeader {
+    unsigned numOfEntries;
+    unsigned freeSpaceOffset;
+    unsigned parentPage;
+    unsigned leftNode;
+    unsigned rightNode;
+} LeafNodeHeader;
+
+typedef struct LeafNode {
+    unsigned offset;
+    unsigned length;
+    ixStatus status;
+} LeafNode;
 
 class IndexManager {
 
@@ -79,19 +107,16 @@ class IndexManager {
 
     private:
     //private node methods
-    void setNodeOnPage(void * page, Node node);
-    Node getNodeOnPage(void * page);
-    unsigned splitNodeAtPage(unsigned pageNum);
-    unsigned mergeLeftNodeAtPage(unsigned pageNum);
-    unsigned mergeRightNodeAtPage(unsigned pageNum);
-    void setKey(unsigned keyNum, void* data, unsigned size);
-	RC initializeBTree(void * newPage,Node &newNode, IXFileHandle &ixfileHandle,
-                       const void * data, const RID &rid, const Attribute &attribute);
-    unsigned getKeySize(AttrType att, const void* key);
-    bool fileExists(const string &fileName);
-    bool pfmPtr;
     static IndexManager *_index_manager;
     PagedFileManager * pfm;
+    bool pfmPtr;
+
+    // **************************** Helper Function **********************t ******
+    bool fileExists(const string &fileName);
+    void setKey(unsigned keyNum, void* data, unsigned size);
+    unsigned getKeySize(AttrType att, const void* key);
+
+    // *************************************************************************
 };
 
 
