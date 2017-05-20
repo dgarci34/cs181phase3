@@ -72,6 +72,10 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
     return SUCCESS;
 }
 
+RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid){
+    return -1;
+}
+
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
