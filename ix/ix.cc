@@ -88,10 +88,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 		}
 	}
     cout<< "retriving root\n";
-    ixfileHandle.readPage(ixfileHandle.rootPage,pageData);
+    if (ixfileHandle.readPage(ixfileHandle.rootPage,pageData))  //get root page
+      return IX_READ_FAILED;
     node = getNodeOnPage(pageData);
 
-	//if pages find root
         //if index node go to position then attempt to do insert at where it points to
 
 		//if space insert key, id done
@@ -128,6 +128,7 @@ Node IndexManager::getNodeOnPage(void * page){
     return node;
 }
 
+//return the length of the key
 unsigned IndexManager::getKeySize(AttrType att,const  void * key){
     switch (att) {
         case TypeReal:
@@ -161,6 +162,7 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
 }
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const {
+//  ixfileHandle.readPage()
 }
 
 IX_ScanIterator::IX_ScanIterator()
