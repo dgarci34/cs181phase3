@@ -29,7 +29,7 @@ class IXFileHandle;
 
 typedef enum{ alive = 0, dead } ixStatus;
 
-// Meta 
+// Meta
 typedef struct MetaHeader {
     unsigned rootPage;
     unsigned numOfInternalNodes;
@@ -44,12 +44,12 @@ typedef struct InternalNodeHeader {
     unsigned parentPage;
 } InternalNodeHeader;
 
-typedef struct InternalNode {
+typedef struct InternalNodeEntry {
     unsigned offset;
     unsigned length;
     unsigned leftChild;
     unsigned rightChild;
-} InternalNode;
+} InternalNodeEntry;
 
 // Leaf Node
 typedef struct LeafNodeHeader {
@@ -60,11 +60,11 @@ typedef struct LeafNodeHeader {
     unsigned rightNode;
 } LeafNodeHeader;
 
-typedef struct LeafNode {
+typedef struct LeafNodeEntry {
     unsigned offset;
     unsigned length;
     ixStatus status;
-} LeafNode;
+} LeafNodeEntry;
 
 class IndexManager {
 
