@@ -24,6 +24,8 @@
 #define IX_ENTRY_DOES_NOT_EXIST 12
 #define IX_TYPE_ERROR 13
 #define IX_KEY_DOES_NOT_EXIST 14
+#define IX_TREE_ERROR 15
+#define IX_SEARCH_FAILED 16
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
@@ -157,6 +159,8 @@ class IndexManager {
     RC compareVarChars(const void * key, const void * toCompareTo);
     unsigned getSizeofLeafEntry(const void * key, AttrType attrType);
     unsigned getLeafFreeSpace(LeafNodeHeader leafNodeHeader);
+    RC findKeyInLeafNode(IXFileHandle &ixfileHandle, unsigned pageNum, void * key, AttrType type, IndexId * indexId);
+    RC findNextNode(IXFileHandle &ixfileHandle, unsigned pageNum, void * key, AttrType type, unsigned * nextPageNum);
 
 };
 

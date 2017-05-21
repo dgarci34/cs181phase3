@@ -344,102 +344,51 @@ unsigned IndexManager::getKeySize(AttrType att,const  void * key){
   return -1;        //should not reach here
 }
 
-RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexId * indexId)
+RC IndexManager::search(IXFileHandle &ixfileHandle, void * key, FILE * pfile, IndexId * indexId)
 {
     // get the root page number and the height of the tree
     MetaHeader tempMetaHeader;
     void * page = malloc(PAGE_SIZE);
-    unsigned rootPage;
+    unsigned nodePageNum;
     unsigned height;
-
 
     if (ixfileHandle.readPage(0, page))
         return IX_READ_FAILED;
 
     tempMetaHeader = getMetaHeader(page);
-    rootPage = tempMetaHeader.rootPage;
+    nodePageNum = tempMetaHeader.rootPage;
     height = tempMetaHeader.height;
-
-    // read the root page and compare the key
-    LeafNodeHeader tempLeafNodeHeader;
-    LeafNodeEntry tempLeafNodeEntry;
-
-    if (ixfileHandle.readPage(rootPage, page))
-        return IX_READ_FAILED;
 
     // Tree has only 1 node (root)
     if (height == 0) {
-        tempLeafNodeHeader = getLeafNodeHeader(page);
-
-        // no entry in the B+ tree
-        if (tempLeafNodeHeader.numOfEntries == 0)
+        if (findKeyInLeafNode(ixfileHandle, nodePageNum, key, tempMetaHeader.type, indexId))
         {
             free(page);
             return IX_ENTRY_DOES_NOT_EXIST;
         }
-
-        // at least 1 entry in the tree
-        for (unsigned i = 0; i < tempLeafNodeHeader.numOfEntries; i++)
-        {
-            tempLeafNodeEntry = getLeafNodeEntry(page, i);
-
-            // compare the key if the entry is NOT deleted
-            if (tempLeafNodeEntry.status == alive)
-            {
-                switch (tempMetaHeader.type) {
-                    case TypeInt:
-                    {
-                        int * tempKey = (int*) key;
-                        int entryKey;
-                        memcpy(&entryKey, (page + tempLeafNodeEntry.offset), sizeof(int));
-
-                        // target key is found
-                        if (entryKey == tempKey[0])
-                        {
-                            indexId->pageId = rootPage;
-                            indexId->entryId = i;
-
-                            free(page);
-                            return SUCCESS;
-                        }
-
-                        // target key does not exist
-                        if (entryKey > tempKey[0])
-                        {
-                            free(page);
-                            return IX_KEY_DOES_NOT_EXIST;
-                        }
-                        break;
-                    }
-
-                    case TypeReal:
-                    {
-                        break;
-                    }
-
-                    case TypeVarChar:
-                    {
-                        break;
-                    }
-
-                    default:
-                    {
-                        free(page);
-                        return IX_TYPE_ERROR;
-                    }
-                }
-
-            }
-        }
+        
+        free(page);
+        return SUCCESS;
     }
 
-    InternalNodeHeader tempInternalNodeHeader;
-    InternalNodeEntry tempInternalNodesEntry;
-
-    // free
+    // Find the path to the next node
+    for (unsigned i = 0; i < height; i ++)
+    {
+        if (findNextNode(ixfileHandle, nodePageNum, key, tempMetaHeader.type, &nodePageNum))
+        {
+            free(page);
+            return IX_ENTRY_DOES_NOT_EXIST;
+        }
+    }
+    
+    if (findKeyInLeafNode(ixfileHandle, nodePageNum, key, tempMetaHeader.type, indexId))
+    {
+        free(page);
+        return IX_ENTRY_DOES_NOT_EXIST;
+    }
+        
     free(page);
-
-    return -1;
+    return SUCCESS;
 }
 
 // ****************************Node helper functions************************
@@ -536,6 +485,7 @@ void IndexManager::setLeafKeyAndRidAtOffset(void * page, const Attribute &attrib
 void IndexManager::setInternalKeyAtOffset(void * page, const Attribute &attribute, const void *key, unsigned keylength, unsigned offset){
   memcpy(page + offset -keylength, key, keylength);
 }
+
 //compares integer values
 RC IndexManager::compareInts(const void * key, const void * toCompareTo){
   int * val1 = (int*)key;
@@ -572,6 +522,7 @@ RC IndexManager::compareVarChars(const void * key, const void * toCompareTo){
 void IndexManager::getKeyAtOffset(void * page, void * dest, unsigned offset, unsigned length){
   memcpy(dest, page + offset, length);
 }
+
 //returns the size that a leaf node entry would take
 unsigned IndexManager::getSizeofLeafEntry(const void * key, AttrType attrType){
   unsigned keyLength =0;
@@ -589,8 +540,278 @@ unsigned IndexManager::getSizeofLeafEntry(const void * key, AttrType attrType){
   }
   return (sizeof(LeafNodeEntry) + sizeof(RID) + keyLength);
 }
+
 //retuns the free space on the page
 unsigned IndexManager::getLeafFreeSpace(LeafNodeHeader leafNodeHeader){
   return (leafNodeHeader.freeSpaceOffset - sizeof(LeafNodeHeader) - (sizeof(LeafNodeEntry) * leafNodeHeader.numOfEntries));
 }
+
+RC IndexManager::findKeyInLeafNode(IXFileHandle &ixfileHandle, unsigned pageNum, void * key, AttrType type, IndexId * indexId)
+{
+    LeafNodeHeader tempLeafNodeHeader;
+    LeafNodeEntry tempLeafNodeEntry;
+    void * page = malloc(PAGE_SIZE);
+
+    if (ixfileHandle.readPage(pageNum, page))
+        return IX_READ_FAILED;
+
+    tempLeafNodeHeader = getLeafNodeHeader(page);
+
+    // no entry in the B+ tree`
+    if (tempLeafNodeHeader.numOfEntries <= 0)
+    {
+        free(page);
+        return IX_ENTRY_DOES_NOT_EXIST;
+    }
+
+    // at least 1 entry in the tree
+    for (unsigned i = 0; i < tempLeafNodeHeader.numOfEntries; i++)
+    {
+        tempLeafNodeEntry = getLeafNodeEntry(page, i);
+
+        // compare the key if the entry is NOT deleted
+        if (tempLeafNodeEntry.status == alive)
+        {
+            switch (type) {
+                case TypeInt:
+                {
+                    int * tempKey = (int *) key;
+                    int entryKey;
+                    memcpy(&entryKey, (page + tempLeafNodeEntry.offset), sizeof(int));
+
+                    // target key is found
+                    if (entryKey == tempKey[0])
+                    {
+                        indexId->pageId = pageNum;
+                        indexId->entryId = i;
+
+                        free(page);
+                        return SUCCESS;
+                    }
+
+                    // the key in entry is greater, implies that no matching key is found
+                    // target key does not exist
+                    if (entryKey > tempKey[0])
+                    {
+                        free(page);
+                        return IX_KEY_DOES_NOT_EXIST;
+                    }
+                    break;
+                }
+
+                case TypeReal:
+                {
+                    float * tempKey = (float *) key;
+                    float entryKey;
+                    memcpy(&entryKey, (page + tempLeafNodeEntry.offset), sizeof(float));
+                    
+                    // target key is found
+                    if (entryKey == tempKey[0])
+                    {
+                        indexId->pageId = pageNum;
+                        indexId->entryId = i;
+
+                        free(page);
+                        return SUCCESS;
+                    }
+                    
+                    // the key in entry is greater, implies that no matching key is found
+                    // target key does not exist
+                    if (entryKey > tempKey[0])
+                    {
+                        free(page);
+                        return IX_KEY_DOES_NOT_EXIST;
+                    }
+                    break;
+                }
+
+                case TypeVarChar:
+                {
+                    unsigned length;
+                    unsigned entryKeyLength;
+                    void * charTempKey;
+                    void * charEntryKey;
+                    string strTempKey;
+                    string strEntryKey;
+                    
+                    memcpy(&length, key, sizeof(unsigned));
+                    charTempKey = malloc(length);
+                    memcpy(charTempKey, (key + sizeof(unsigned)), length);
+                    strTempKey = (char *) charTempKey;
+                    
+                    entryKeyLength = tempLeafNodeEntry.length;
+                    charEntryKey = malloc(entryKeyLength);
+                    memcpy(charEntryKey, (page + tempLeafNodeEntry.offset), entryKeyLength);
+                    strEntryKey = (char *) charEntryKey;
+
+                    // target key is found
+                    if (strTempKey.compare(strEntryKey) == 0)
+                    {
+                        indexId->pageId = pageNum;
+                        indexId->entryId = i;
+
+                        free(page);
+                        free(charTempKey);
+                        free(charTempKey);
+                        return SUCCESS;
+                    }
+
+                    // the key in entry is greater, implies that no matching key is found
+                    // target key does not exist
+                    if (strTempKey.compare(strEntryKey) > 0)
+                    {
+                        free(page);
+                        free(charTempKey);
+                        free(charTempKey);
+                        return SUCCESS;
+                    }
+                    break;
+                }
+
+                default:
+                {
+                    free(page);
+                    return IX_TYPE_ERROR;
+                }
+            }
+
+        }
+    } 
+
+    // the key is greater than all the keys in the entry
+    // no matching key is found
+    free(page);
+    return IX_KEY_DOES_NOT_EXIST;
+}
+
+
+RC IndexManager::findNextNode(IXFileHandle &ixfileHandle, unsigned pageNum, void * key, AttrType type, unsigned * nextNodePageNum)
+{
+    InternalNodeHeader tempInternalNodeHeader;
+    InternalNodeEntry tempInternalNodesEntry;
+    void * page = malloc(PAGE_SIZE);
+
+    if (ixfileHandle.readPage(pageNum, page))
+        return IX_READ_FAILED;
+
+    tempInternalNodeHeader = getInternalNodeHeader(page);
+    if (tempInternalNodeHeader.numOfEntries <= 0)
+    {
+        free(page);
+        return IX_TREE_ERROR;
+    }
+
+    for (unsigned k = 0; k < tempInternalNodeHeader.numOfEntries; k++)
+    {
+        tempInternalNodesEntry = getInternalNodeEntry(page, k);
+
+        switch(type)
+        {
+            case TypeInt:
+            {
+                int * tempKey = (int *) key;
+                int entryKey;
+                memcpy(&entryKey, (page + tempInternalNodesEntry.offset), sizeof(int));
+
+                // search key and the key entry are matched
+                if (entryKey == tempKey[0])
+                {
+                   *nextNodePageNum = tempInternalNodesEntry.rightChild;
+                   free(page);
+                   return SUCCESS;
+                }
+
+                // the proper position of the key is on the left child
+                if (entryKey > tempKey[0])
+                {
+                   *nextNodePageNum = tempInternalNodesEntry.leftChild;
+                   free(page);
+                   return SUCCESS;
+                }
+                break;
+            }
+                
+            case TypeReal:
+            {
+                float * tempKey = (float *) key;
+                float entryKey;
+                memcpy(&entryKey, (page + tempInternalNodesEntry.offset), sizeof(float));
+
+                // target key is found
+                if (entryKey == tempKey[0])
+                {
+                    *nextNodePageNum = tempInternalNodesEntry.rightChild;
+                    free(page);
+                    return SUCCESS;
+                }
+                
+                // the proper position of the key is on the left child
+                if (entryKey > tempKey[0])
+                {
+                   *nextNodePageNum = tempInternalNodesEntry.leftChild;
+                   free(page);
+                   return SUCCESS;
+                }
+                break;
+            }
+
+            case TypeVarChar:
+            {
+                unsigned length;
+                unsigned entryKeyLength;
+                void * charTempKey;
+                void * charEntryKey;
+                string strTempKey;
+                string strEntryKey;
+                
+                memcpy(&length, key, sizeof(unsigned));
+                charTempKey = malloc(length);
+                memcpy(charTempKey, (key + sizeof(unsigned)), length);
+                strTempKey = (char *) charTempKey;
+                
+                entryKeyLength = tempInternalNodesEntry.length;
+                charEntryKey = malloc(entryKeyLength);
+                memcpy(charEntryKey, (page + tempInternalNodesEntry.offset), entryKeyLength);
+                strEntryKey = (char *) charEntryKey;
+
+                // target key is found
+                if (strTempKey.compare(strEntryKey) == 0)
+                {
+                    *nextNodePageNum = tempInternalNodesEntry.leftChild;
+                    free(page);
+                    free(charTempKey);
+                    free(charTempKey);
+                    return SUCCESS;
+                }
+
+                // strEntryKey < strTempKey
+                // implies that the proposition of search key is at the left child
+
+                if (strTempKey.compare(strEntryKey) < 0)
+                {
+                    *nextNodePageNum = tempInternalNodesEntry.leftChild;
+                    free(page);
+                    free(charTempKey);
+                    free(charTempKey);
+                    return SUCCESS;
+                }
+                break;
+            }
+
+            default:
+            {
+                free(page);
+                return IX_TYPE_ERROR;
+            }   
+        }
+    }
+
+    // the search key is greater than all the key in entries
+    // so the proper position is the right child of the last entry
+    *nextNodePageNum = tempInternalNodesEntry.rightChild;
+    free(page);
+    return SUCCESS;
+}
+
+
 // *************************************************************************
