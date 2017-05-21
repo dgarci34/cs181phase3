@@ -73,6 +73,64 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 }
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid){
+    //if no file error
+    if (ixfileHandle.fileName == "")
+      return IX_FILE_DN_EXIST;
+
+    //if no pages yet beging new tree
+    if (!ixfileHandle.getNumberOfPages())
+      initializeBTree(ixfileHandle);
+
+    //get meta header
+    void * pageData =  malloc(PAGE_SIZE);
+    if (ixfileHandle.readPage(META_PAGE, pageData))
+      return IX_READ_FAILED;
+    MetaHeader mHeader = getMetaHeader(pageData);
+
+    //begin at the root
+    ixfileHandle.readPage(mHeader.rootPage, pageData);
+    unsigned childPageNum = 0;
+    bool childFound = false;
+
+    //this will loop through intrnal nodes if any exists
+    InternalNodeHeader iHeader;
+    InternalNodeEntry iEntry;
+    void * keyInMemory;                 //key you extract and compare to
+    for (unsigned i =0; i < mHeader.height; i--){
+      iHeader = getInternalNodeHeader(pageData);
+      //compare through internal node values
+      for (unsigned j =0; j < iHeader.numOfEntries; j++){
+        iEntry = getInternalNodeEntry(pageData, j);
+        //compare based on type
+        switch (attribute.type) {
+          case TypeInt:
+          {
+            keyInMemory = malloc(INT_SIZE);
+            getKeyAtOffset(pageData, keyInMemory,iEntry.offset, iEntry.length);
+            if (compareInts(key, keyInMemory) == LESS_THAN_OR_EQUAL){
+              childPageNum = iEntry.leftChild;
+              childFound = true;
+              free(keyInMemory);
+            }
+            //if greater than and at the last follow rightchild
+            break;
+          }
+          case TypeReal:
+          {
+            break;
+          }
+          case TypeVarChar:
+          {
+            break;
+          }
+        }
+        if (childFound){
+          ixfileHandle.readPage(childPageNum, pageData);
+          break;
+        }
+      }
+    }
+
     return -1;
 }
 
@@ -94,8 +152,21 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
     return -1;
 }
 
-void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const {
-//  ixfileHandle.readPage()
+void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const{
+  //there must be a tree
+  if (!ixfileHandle.getNumberOfPages())
+    return;
+  cout<< "----------------BTREE " <<ixfileHandle.fileName<< "--------------------- \n\n";
+  MetaHeader mHeader;
+  memcpy(&mHeader, ixfileHandle._file, sizeof(MetaHeader));
+/*  void * pageData = malloc(PAGE_SIZE);
+  ixfileHandle.readPage(META_PAGE, pageData);
+  MetaHeader mHeader;
+  IXFileHandle *ix = &ixfileHandle;
+  mHeader = ix->getMetaHeader(pageData);
+
+  //get meta
+  free(pageData);*/
 }
 
 IX_ScanIterator::IX_ScanIterator()
@@ -241,7 +312,7 @@ RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, Ind
     void * page = malloc(PAGE_SIZE);
     unsigned rootPage;
     unsigned height;
-    
+
 
     if (ixfileHandle.readPage(0, page))
         return IX_READ_FAILED;
@@ -260,8 +331,8 @@ RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, Ind
     // Tree has only 1 node (root)
     if (height == 0) {
         tempLeafNodeHeader = getLeafNodeHeader(page);
-        
-        // no entry in the B+ tree 
+
+        // no entry in the B+ tree
         if (tempLeafNodeHeader.numOfEntries == 0)
         {
             free(page);
@@ -272,7 +343,7 @@ RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, Ind
         for (unsigned i = 0; i < tempLeafNodeHeader.numOfEntries; i++)
         {
             tempLeafNodeEntry = getLeafNodeEntry(page, i);
-            
+
             // compare the key if the entry is NOT deleted
             if (tempLeafNodeEntry.status == alive)
             {
@@ -282,7 +353,7 @@ RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, Ind
                         int * tempKey = (int*) key;
                         int entryKey;
                         memcpy(&entryKey, (page + tempLeafNodeEntry.offset), sizeof(int));
-                        
+
                         // target key is found
                         if (entryKey == tempKey[0])
                         {
@@ -310,8 +381,8 @@ RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, Ind
                     case TypeVarChar:
                     {
                         break;
-                    }   
-                     
+                    }
+
                     default:
                     {
                         free(page);
@@ -322,7 +393,7 @@ RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, Ind
             }
         }
     }
-    
+
     InternalNodeHeader tempInternalNodeHeader;
     InternalNodeEntry tempInternalNodesEntry;
 
@@ -425,5 +496,17 @@ void IndexManager::setLeafKeyAndRidAtOffset(void * page, const Attribute &attrib
 //adds a key to a internal node page
 void IndexManager::setInternalKeyAtOffset(void * page, const Attribute &attribute, const void *key, unsigned keylength, unsigned offset){
   memcpy(page + offset -keylength, key, keylength);
+}
+//compares integer values
+RC IndexManager::compareInts(const void * key, const void * toCompareTo){
+  int * val1 = (int*)key;
+  int * val2 = (int *)toCompareTo;
+  if (val1[0] <= val2[0])
+    return LESS_THAN_OR_EQUAL;
+  return GREATER_THAN;
+}
+//returns the key at offset
+void IndexManager::getKeyAtOffset(void * page, void * dest, unsigned offset, unsigned length){
+  memcpy(dest, page + offset, length);
 }
 // *************************************************************************

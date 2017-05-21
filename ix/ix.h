@@ -28,7 +28,11 @@
 #define NO_PAGE 0
 #define NO_ENTRIES 0
 #define INITIAL_HEIGHT 0
+#define META_PAGE 0
 #define INITIAL_PAGE 1
+
+#define LESS_THAN_OR_EQUAL 1
+#define GREATER_THAN 2
 
 using namespace std;
 
@@ -146,7 +150,11 @@ class IndexManager {
     void setInternalNodeEntry(void * page, InternalNodeEntry internalNodeEntry, unsigned slotNumber);
     void setLeafKeyAndRidAtOffset(void * page, const Attribute &attribute, const void *key,
     const RID &rid, unsigned offset, unsigned keylength);
-    void setInternalKeyAtOffset(void * page, const Attribute &attribute, const void *key, unsigned keylength, unsigned offset);    
+    void setInternalKeyAtOffset(void * page, const Attribute &attribute, const void *key, unsigned keylength, unsigned offset);
+    void getKeyAtOffset(void * page, void * dest, unsigned offset, unsigned length);
+    RC compareInts(const void * key, const void * toCompareTo);
+    RC compareReals(const void * key, const void * toCompareTo);
+    RC compareVarChars(const void * key, const void * toCompareTo);
 
 };
 
