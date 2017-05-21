@@ -113,24 +113,63 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
               free(keyInMemory);
             }
             //if greater than and at the last follow rightchild
+            else if(j == iHeader.numOfEntries -1){
+              childPageNum = iEntry.rightChild;
+              childFound = true;
+              free(keyInMemory);
+            }
             break;
           }
           case TypeReal:
           {
+            keyInMemory = malloc(REAL_SIZE);
+            getKeyAtOffset(pageData, keyInMemory,iEntry.offset, iEntry.length);
+            if (compareReals(key, keyInMemory) == LESS_THAN_OR_EQUAL){
+              childPageNum = iEntry.leftChild;
+              childFound = true;
+              free(keyInMemory);
+            }
+            //if greater than and at the last follow rightchild
+            else if(j == iHeader.numOfEntries -1){
+              childPageNum = iEntry.rightChild;
+              childFound = true;
+              free(keyInMemory);
+            }
             break;
           }
           case TypeVarChar:
           {
+            keyInMemory = malloc(iEntry.length);
+            getKeyAtOffset(pageData, keyInMemory,iEntry.offset, iEntry.length);
+            if (compareVarChars(key, keyInMemory) == LESS_THAN_OR_EQUAL){
+              childPageNum = iEntry.leftChild;
+              childFound = true;
+              free(keyInMemory);
+            }
+            //if greater than and at the last follow rightchild
+            else if(j == iHeader.numOfEntries -1){
+              childPageNum = iEntry.rightChild;
+              childFound = true;
+              free(keyInMemory);
+            }
             break;
           }
         }
         if (childFound){
+          //found locaion for child node, check next height
           ixfileHandle.readPage(childPageNum, pageData);
+          childFound = false;
           break;
         }
       }
     }
 
+    //traversed through internal nodes now at leaf
+    LeafNodeHeader lHeader = getLeafNodeHeader(pageData);
+
+    //if there is no space we split the node
+    unsigned potentialSize = getSizeofLeafEntry(key, attribute.type);
+    unsigned freeSpaceOnPage = getLeafFreeSpace(lHeader);
     return -1;
 }
 
@@ -505,8 +544,53 @@ RC IndexManager::compareInts(const void * key, const void * toCompareTo){
     return LESS_THAN_OR_EQUAL;
   return GREATER_THAN;
 }
+//compares float values
+RC IndexManager:: compareReals(const void * key, const void * toCompareTo){
+  float * val1 = (float *)key;
+  float * val2 = (float *)toCompareTo;
+  if (val1[0] <= val2[0])
+    return LESS_THAN_OR_EQUAL;
+  return GREATER_THAN;
+}
+//compares varchar values
+RC IndexManager::compareVarChars(const void * key, const void * toCompareTo){
+  int *size1 = (int*)key;
+  int *size2 = (int*)toCompareTo;
+  char * cast1 = (char*)key;
+  char * cast2 = (char*)toCompareTo;
+  string str1 = "";
+  string str2 = "";
+  for (int i =0; i < size1[0]; i ++)
+    str1[i] = cast1[i];
+  for (int i =0; i < size2[0]; i++)
+    str2[i] = cast2[i];
+   if (str1.compare(str2) < 1)
+    return LESS_THAN_OR_EQUAL;
+  return GREATER_THAN;
+}
 //returns the key at offset
 void IndexManager::getKeyAtOffset(void * page, void * dest, unsigned offset, unsigned length){
   memcpy(dest, page + offset, length);
+}
+//returns the size that a leaf node entry would take
+unsigned IndexManager::getSizeofLeafEntry(const void * key, AttrType attrType){
+  unsigned keyLength =0;
+  switch (attrType) {
+    case TypeInt:
+      keyLength = INT_SIZE;
+      break;
+    case TypeReal:
+      keyLength = REAL_SIZE;
+      break;
+    case TypeVarChar:
+    keyLength = INT_SIZE;
+    int * size = (int*)key;
+    keyLength += size[0];
+  }
+  return (sizeof(LeafNodeEntry) + sizeof(RID) + keyLength);
+}
+//retuns the free space on the page
+unsigned IndexManager::getLeafFreeSpace(LeafNodeHeader leafNodeHeader){
+  return (leafNodeHeader.freeSpaceOffset - sizeof(LeafNodeHeader) - (sizeof(LeafNodeEntry) * leafNodeHeader.numOfEntries));
 }
 // *************************************************************************

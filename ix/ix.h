@@ -155,6 +155,8 @@ class IndexManager {
     RC compareInts(const void * key, const void * toCompareTo);
     RC compareReals(const void * key, const void * toCompareTo);
     RC compareVarChars(const void * key, const void * toCompareTo);
+    unsigned getSizeofLeafEntry(const void * key, AttrType attrType);
+    unsigned getLeafFreeSpace(LeafNodeHeader leafNodeHeader);
 
 };
 
