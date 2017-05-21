@@ -234,11 +234,11 @@ unsigned IndexManager::getKeySize(AttrType att,const  void * key){
   return -1;        //should not reach here
 }
 
-RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexID * indexID)
+RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexId * indexId)
 {
     // get the root page number and the height of the tree
     MetaHeader tempMetaHeader;
-    void * page = calloc(PAGE_SIZE);
+    void * page = malloc(PAGE_SIZE);
     unsigned rootPage;
     unsigned height;
     
@@ -276,37 +276,49 @@ RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, Ind
             // compare the key if the entry is NOT deleted
             if (tempLeafNodeEntry.status == alive)
             {
-                switch (tempMetaHeader.type):
+                switch (tempMetaHeader.type) {
                     case TypeInt:
+                    {
                         int * tempKey = (int*) key;
                         int entryKey;
                         memcpy(&entryKey, (page + tempLeafNodeEntry.offset), sizeof(int));
                         
                         // target key is found
-                        if (entryKey[0] == tempKey[0])
+                        if (entryKey == tempKey[0])
                         {
-                            indexID.pageID = rootPage;
-                            indexID.entryID = i;
+                            indexId->pageId = rootPage;
+                            indexId->entryId = i;
 
                             free(page);
                             return SUCCESS;
                         }
 
                         // target key does not exist
-                        if (entryKey[0] > tempKey[0])
+                        if (entryKey > tempKey[0])
                         {
                             free(page);
                             return IX_KEY_DOES_NOT_EXIST;
                         }
                         break;
+                    }
 
                     case TypeReal:
+                    {
                         break;
+                    }
+
                     case TypeVarChar:
+                    {
                         break;
+                    }   
+                     
                     default:
-                        free(page)
+                    {
+                        free(page);
                         return IX_TYPE_ERROR;
+                    }
+                }
+
             }
         }
     }

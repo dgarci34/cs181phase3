@@ -38,10 +38,10 @@ class IXFileHandle;
 typedef enum{ alive = 0, dead } ixStatus;
 
 // IndexID
-typedef struct IndexID {
+typedef struct IndexId {
     unsigned pageId;
     unsigned entryId;
-} IndexID;
+} IndexId;
 
 // Meta
 typedef struct MetaHeader {
@@ -130,7 +130,7 @@ class IndexManager {
     bool fileExists(const string &fileName);
     void setKey(unsigned keyNum, void* data, unsigned size);
     unsigned getKeySize(AttrType att, const void* key);
-    RC search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexID * indexId);
+    RC search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexId * indexId);
 
     // ****************************Node helper functions************************
     void initializeBTree(IXFileHandle ixfileHandle);
