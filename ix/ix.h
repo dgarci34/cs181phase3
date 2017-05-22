@@ -27,6 +27,7 @@
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
+#define FIRST_ENTRY 0
 #define INITIAL_HEIGHT 0
 #define META_PAGE 0
 #define INITIAL_PAGE 1
@@ -138,7 +139,7 @@ class IndexManager {
 
     // ****************************Node helper functions************************
     void initializeBTree(IXFileHandle ixfileHandle);
-    
+
     //get/set struct helpers
     MetaHeader getMetaHeader(void * page);
     LeafNodeHeader getLeafNodeHeader(void * page);
@@ -150,21 +151,21 @@ class IndexManager {
     void setInternalNodeHeader(void * page, InternalNodeHeader internalNodeHeader);
     void setLeafNodeEntry(void * page, LeafNodeEntry leafNodeEntry, unsigned slotNumber);
     void setInternalNodeEntry(void * page, InternalNodeEntry internalNodeEntry, unsigned slotNumber);
-    
+
     //get/set key helpers
     void setLeafKeyAndRidAtOffset(void * page, const Attribute &attribute, const void *key, const RID &rid, unsigned offset, unsigned keylength);
     void setInternalKeyAtOffset(void * page, const Attribute &attribute, const void *key, unsigned keylength, unsigned offset);
     void getKeyAtOffset(void * page, void * dest, unsigned offset, unsigned length);
-    
+
     //comparison helpers
     RC compareInts(const void * key, const void * toCompareTo);
     RC compareReals(const void * key, const void * toCompareTo);
     RC compareVarChars(const void * key, const void * toCompareTo);
-    
+
     //size helpers
     unsigned getSizeofLeafEntry(const void * key, AttrType attrType);
     unsigned getLeafFreeSpace(LeafNodeHeader leafNodeHeader);
-    
+
     //treebalance helpers
     unsigned splitLeafAtEntry(void * page, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
     void splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);

@@ -167,7 +167,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     //traversed through internal nodes now at leaf
     LeafNodeHeader lHeader = getLeafNodeHeader(pageData);
     LeafNodeEntry lEntry;
-    
+
     //if there is no space we split the node
     unsigned potentialSize = getSizeofLeafEntry(key, attribute.type);
     unsigned freeSpaceOnPage = getLeafFreeSpace(lHeader);
@@ -265,14 +265,14 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         }
     }
     //now inject the data where it belongs
-    if (!spot){
-        injectBefore(pageData, lHeader, key, rid, attribute.type);
+    if (spot == lHeader.numOfEntries || !lHeader.numOfEntries){      //add at the end
+        injectAfter(pageData, lHeader, key, rid, attribute.type);
     }
-    else if(spot < lHeader.numOfEntries -1){
+    else if(spot < lHeader.numOfEntries -1 && spot){  //add in the middle
         injectBetween(pageData, spot, lHeader, key, rid, attribute.type);
     }
-    else{
-        injectAfter(pageData, lHeader, key, rid, attribute.type);
+    else{   //add before
+        injectBefore(pageData, lHeader, key, rid, attribute.type);
     }
     ixfileHandle.writePage(childPageNum,pageData);
     free(pageData);
@@ -705,20 +705,64 @@ unsigned IndexManager::splitLeafAtEntry(void * page, MetaHeader &metaHeader,Leaf
 }
 //splits an internal node at the midpoint
 void IndexManager::splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint){
-    
+
 }
 //used to insert at the beginin of a leafnode
 void IndexManager::injectBefore(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType){
     LeafNodeEntry leafNodeEntry;
-    if (!leafNodeHeader.numOfEntries){
-        leafNodeEntry.status = alive;
-        leafNodeEntry.length = getKeySize(attrType, key);
-        leafNodeEntry.offset = leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID);
+    LeafNodeEntry following;
+    //node to be inserted
+    leafNodeEntry.length = getKeySize(attrType, key);
+    leafNodeEntry.status = alive;
+    //update shifted entry offsets
+    for (unsigned i = 0; i< leafNodeHeader.numOfEntries; i++){
+      following = getLeafNodeEntry(page, i);
+      following.offset += leafNodeEntry.length;
+      following.offset += sizeof(RID);
+      setLeafNodeEntry(page, following, i);
     }
+    //memory move data left
+    memmove(page - leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID), page - leafNodeHeader.freeSpaceOffset, PAGE_SIZE - leafNodeHeader.freeSpaceOffset);
+    //memory move entries right
+    memmove(page + sizeof(LeafNodeHeader) + sizeof(LeafNodeEntry), page + sizeof(LeafNodeHeader), leafNodeHeader.numOfEntries * sizeof(LeafNodeEntry));
+    //insert the new begining one
+    memcpy(page + PAGE_SIZE - leafNodeEntry.length - sizeof(RID), key, leafNodeEntry.length);
+    memcpy(page + PAGE_SIZE - sizeof(RID), &rid, sizeof(RID));
+    setLeafNodeEntry(page, leafNodeEntry, FIRST_ENTRY);
+    leafNodeHeader.numOfEntries++;
+    //update leaf header
+    leafNodeHeader.freeSpaceOffset -= leafNodeEntry.length;
+    leafNodeHeader.freeSpaceOffset -= sizeof(RID);
+    setLeafNodeHeader(page, leafNodeHeader);
 }
 //used to inject in between a leaf node
 void IndexManager::injectBetween(void * page, unsigned position, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType){
-    
+  LeafNodeEntry previous = getLeafNodeEntry(page, position -1);
+  LeafNodeEntry leafNodeEntry;
+  LeafNodeEntry following;
+  leafNodeEntry.status = alive;
+  leafNodeEntry.length = getKeySize(attrType, key);
+  Attribute tempatt;
+  tempatt.type = attrType;
+  leafNodeEntry.offset = previous.offset - leafNodeEntry.length - sizeof(RID);
+  //update shifted entry offsets
+  for (unsigned i = position; i< leafNodeHeader.numOfEntries; i++){
+    following = getLeafNodeEntry(page, i);
+    following.offset += leafNodeEntry.length;
+    following.offset += sizeof(RID);
+    setLeafNodeEntry(page, following, i);
+  }
+  //shift following keys left
+  memmove(page + leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID), page + leafNodeHeader.freeSpaceOffset, leafNodeHeader.freeSpaceOffset - previous.offset);
+  //shift following entries right
+  memmove(page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * (position+ 1)), page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * position), sizeof(LeafNodeEntry) * (leafNodeHeader.numOfEntries - position));
+  //insert key and entry in opened space
+  setLeafKeyAndRidAtOffset(page, tempatt, key, rid, leafNodeEntry.offset, leafNodeEntry.length);
+  setLeafNodeEntry(page, leafNodeEntry, position);
+  leafNodeHeader.freeSpaceOffset -= leafNodeEntry.length - sizeof(RID);
+  leafNodeHeader.numOfEntries++;
+  setLeafNodeHeader(page, leafNodeHeader);
+
 }
 //used to insert at the end of a leaf node
 void IndexManager::injectAfter(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType){
