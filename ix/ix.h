@@ -138,6 +138,8 @@ class IndexManager {
 
     // ****************************Node helper functions************************
     void initializeBTree(IXFileHandle ixfileHandle);
+    
+    //get/set struct helpers
     MetaHeader getMetaHeader(void * page);
     LeafNodeHeader getLeafNodeHeader(void * page);
     InternalNodeHeader getInternalNodeHeader(void * page);
@@ -148,16 +150,30 @@ class IndexManager {
     void setInternalNodeHeader(void * page, InternalNodeHeader internalNodeHeader);
     void setLeafNodeEntry(void * page, LeafNodeEntry leafNodeEntry, unsigned slotNumber);
     void setInternalNodeEntry(void * page, InternalNodeEntry internalNodeEntry, unsigned slotNumber);
-    void setLeafKeyAndRidAtOffset(void * page, const Attribute &attribute, const void *key,
-    const RID &rid, unsigned offset, unsigned keylength);
+    
+    //get/set key helpers
+    void setLeafKeyAndRidAtOffset(void * page, const Attribute &attribute, const void *key, const RID &rid, unsigned offset, unsigned keylength);
     void setInternalKeyAtOffset(void * page, const Attribute &attribute, const void *key, unsigned keylength, unsigned offset);
     void getKeyAtOffset(void * page, void * dest, unsigned offset, unsigned length);
+    
+    //comparison helpers
     RC compareInts(const void * key, const void * toCompareTo);
     RC compareReals(const void * key, const void * toCompareTo);
     RC compareVarChars(const void * key, const void * toCompareTo);
+    
+    //size helpers
     unsigned getSizeofLeafEntry(const void * key, AttrType attrType);
     unsigned getLeafFreeSpace(LeafNodeHeader leafNodeHeader);
+    
+    //treebalance helpers
+    unsigned splitLeafAtEntry(void * page, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
+    void splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
+    void fixPageOrder(void * left, void * right, void * parent, IXFileHandle &ixfileHandle);
 
+    //inserting to leaf helpers
+    void injectBefore(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
+    void injectBetween(void * page, unsigned position, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
+    void injectAfter(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
 };
 
 

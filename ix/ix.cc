@@ -89,7 +89,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 
     //begin at the root
     ixfileHandle.readPage(mHeader.rootPage, pageData);
-    unsigned childPageNum = 0;
+    unsigned childPageNum = INITIAL_PAGE;
     bool childFound = false;
 
     //this will loop through intrnal nodes if any exists
@@ -166,11 +166,117 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 
     //traversed through internal nodes now at leaf
     LeafNodeHeader lHeader = getLeafNodeHeader(pageData);
-
+    LeafNodeEntry lEntry;
+    
     //if there is no space we split the node
     unsigned potentialSize = getSizeofLeafEntry(key, attribute.type);
     unsigned freeSpaceOnPage = getLeafFreeSpace(lHeader);
-    return -1;
+    if (potentialSize > freeSpaceOnPage){
+        unsigned midpoint = lHeader.numOfEntries / 2;
+        unsigned rightSplit = splitLeafAtEntry(pageData, mHeader, lHeader, ixfileHandle, midpoint);
+        lEntry = getLeafNodeEntry(pageData, midpoint);
+        void * midKey = malloc(lEntry.length);
+        getKeyAtOffset(pageData, midKey, lEntry.offset, lEntry.length);
+        switch (attribute.type) {
+            case TypeInt:
+            {
+                if (compareInts(key, midKey) == LESS_THAN_OR_EQUAL){
+                    //insert into left split node
+                    break;
+                }
+                else{   //insert into right
+                    ixfileHandle.readPage(rightSplit, pageData);
+                    childPageNum =rightSplit;
+                    lHeader = getLeafNodeHeader(pageData);
+                    break;
+                }
+            }
+            case TypeReal:
+            {
+                if (compareReals(key, midKey) == LESS_THAN_OR_EQUAL){
+                    //insert into left split node
+                    break;
+                }
+                else{   //insert into right
+                    ixfileHandle.readPage(rightSplit, pageData);
+                    childPageNum = rightSplit;
+                    lHeader = getLeafNodeHeader(pageData);
+                    break;
+                }
+            }
+            case TypeVarChar:
+            {
+                if (compareInts(key, midKey) == LESS_THAN_OR_EQUAL){
+                    //insert into left split node
+                    break;
+                }
+                else{   //insert into right
+                    ixfileHandle.readPage(rightSplit, pageData);
+                    childPageNum = rightSplit;
+                    lHeader = getLeafNodeHeader(pageData);
+                    break;
+                }
+            }
+        }
+        free(midKey);
+    }
+    //at this point we can assume we are in the right page and there is enough space
+    void * currentKey;
+    bool spotFound;
+    unsigned spot =0;
+    for (unsigned i = 0; i < lHeader.numOfEntries; i ++){
+        lEntry = getLeafNodeEntry(pageData, i);
+        currentKey = malloc(lEntry.length);
+        getKeyAtOffset(pageData, currentKey, lEntry.offset, lEntry.length);
+        switch (attribute.type) {
+            case TypeInt:
+            {
+                if(compareInts(key, currentKey) == LESS_THAN_OR_EQUAL){
+                    spotFound = true;
+                    free(currentKey);
+                    spot -= 1;
+                    break;
+                }
+            }
+            case TypeReal:
+            {
+                if(compareReals(key,currentKey) == LESS_THAN_OR_EQUAL){
+                    spotFound = true;
+                    free(currentKey);
+                    spot -= 1;
+                    break;
+                }
+            }
+            case TypeVarChar:
+            {
+                if(compareVarChars(key,currentKey) == LESS_THAN_OR_EQUAL){
+                    spotFound = true;
+                    free(currentKey);
+                    spot -= 1;
+                    break;
+                }
+            }
+        }
+        if (spotFound)
+            break;
+        if(i == lHeader.numOfEntries -1){ //will have to be added to end of page
+            free(currentKey);
+            spot = i;
+        }
+    }
+    //now inject the data where it belongs
+    if (!spot){
+        injectBefore(pageData, lHeader, key, rid, attribute.type);
+    }
+    else if(spot < lHeader.numOfEntries -1){
+        injectBetween(pageData, spot, lHeader, key, rid, attribute.type);
+    }
+    else{
+        injectAfter(pageData, lHeader, key, rid, attribute.type);
+    }
+    ixfileHandle.writePage(childPageNum,pageData);
+    free(pageData);
+    return SUCCESS;
 }
 
 
@@ -593,4 +699,30 @@ unsigned IndexManager::getSizeofLeafEntry(const void * key, AttrType attrType){
 unsigned IndexManager::getLeafFreeSpace(LeafNodeHeader leafNodeHeader){
   return (leafNodeHeader.freeSpaceOffset - sizeof(LeafNodeHeader) - (sizeof(LeafNodeEntry) * leafNodeHeader.numOfEntries));
 }
+//splits the page into two from the leaf node at the midpoint and returns the page of the right split node
+unsigned IndexManager::splitLeafAtEntry(void * page, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint){
+    return -1;
+}
+//splits an internal node at the midpoint
+void IndexManager::splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint){
+    
+}
+//used to insert at the beginin of a leafnode
+void IndexManager::injectBefore(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType){
+    LeafNodeEntry leafNodeEntry;
+    if (!leafNodeHeader.numOfEntries){
+        leafNodeEntry.status = alive;
+        leafNodeEntry.length = getKeySize(attrType, key);
+   //     leafNodeEntry.offset = lHeader.offset -
+    }
+}
+//used to inject in between a leaf node
+void IndexManager::injectBetween(void * page, unsigned position, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType){
+    
+}
+//used to insert at the end of a leaf node
+void IndexManager::injectAfter(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType){
+    
+}
+
 // *************************************************************************
