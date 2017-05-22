@@ -713,7 +713,7 @@ void IndexManager::injectBefore(void * page, LeafNodeHeader &leafNodeHeader, con
     if (!leafNodeHeader.numOfEntries){
         leafNodeEntry.status = alive;
         leafNodeEntry.length = getKeySize(attrType, key);
-   //     leafNodeEntry.offset = lHeader.offset -
+        leafNodeEntry.offset = leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID);
     }
 }
 //used to inject in between a leaf node
@@ -722,7 +722,18 @@ void IndexManager::injectBetween(void * page, unsigned position, LeafNodeHeader 
 }
 //used to insert at the end of a leaf node
 void IndexManager::injectAfter(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType){
-    
+    LeafNodeEntry leafNodeEntry;
+    Attribute tempatt;
+    tempatt.type = attrType;
+    leafNodeEntry.length = getKeySize(attrType, key);
+    leafNodeEntry.status = alive;
+    leafNodeEntry.offset = leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID);
+    setLeafKeyAndRidAtOffset(page, tempatt, key, rid, leafNodeEntry.offset, leafNodeEntry.length);
+    leafNodeHeader.numOfEntries++;
+    leafNodeHeader.freeSpaceOffset = leafNodeEntry.offset;
+    setLeafNodeHeader(page, leafNodeHeader);
+    setLeafNodeEntry(page, leafNodeEntry, leafNodeHeader.numOfEntries -1);
+
 }
 
 // *************************************************************************
