@@ -45,6 +45,7 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixfileHandle)
   //check for file existance
   if(!fileExists(fileName.c_str()))
       return IX_FILE_DN_EXIST;
+//  cout<< "file exists\n";
     //check for a double open
   if(ixfileHandle.getFd() != NULL)
     return IX_HANDLE_IN_USE;
@@ -55,6 +56,7 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixfileHandle)
   if (pFile == NULL)
       return IX_OPEN_FAILED;
   ixfileHandle.setFd(pFile);
+  ixfileHandle.fileName = fileName;
   return SUCCESS;
 }
 
@@ -74,18 +76,21 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid){
     //if no file error
+    cout<<"filename: "<<ixfileHandle.fileName<<endl;
     if (ixfileHandle.fileName == "")
       return IX_FILE_DN_EXIST;
-
     //if no pages yet beging new tree
+    cout<<"pages: "<<ixfileHandle.getNumberOfPages()<<endl;
     if (!ixfileHandle.getNumberOfPages())
-      initializeBTree(ixfileHandle);
-
+      initializeBTree(ixfileHandle, attribute.type);
     //get meta header
     void * pageData =  malloc(PAGE_SIZE);
     if (ixfileHandle.readPage(META_PAGE, pageData))
       return IX_READ_FAILED;
     MetaHeader mHeader = getMetaHeader(pageData);
+    cout<<"meta header check: "<<mHeader.height<<" root: "<<mHeader.rootPage<< " leafs "<< mHeader.numOfLeafNodes<<endl;
+    if (mHeader.type == attribute.type)
+      cout<< "valid type\n";
 
     //begin at the root
     ixfileHandle.readPage(mHeader.rootPage, pageData);
@@ -347,9 +352,9 @@ IXFileHandle::~IXFileHandle()
 
 RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount)
 {
-  ixReadPageCounter = readPageCount;
-  ixWritePageCounter = writePageCount;
-  ixAppendPageCounter = appendPageCount;
+  readPageCount = ixReadPageCounter;
+  writePageCount = ixWritePageCounter;
+  appendPageCount = ixAppendPageCounter;
     return SUCCESS;
 }
 
@@ -421,6 +426,7 @@ RC IXFileHandle::appendPage(void * data)
     {
         fflush(_file);
         ixAppendPageCounter++;
+        cout<< "appendPage: "<< ixAppendPageCounter;
         return SUCCESS;
     }
     return IX_APPEND_FAILED;
@@ -550,15 +556,17 @@ RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, Ind
 
 // ****************************Node helper functions************************
 // initialize B+ Tree
-void IndexManager::initializeBTree(IXFileHandle ixfileHandle){
+void IndexManager::initializeBTree(IXFileHandle ixfileHandle, AttrType attrType){
+    cout<<"initialized BTREE\n";
     MetaHeader mHeader;
     LeafNodeHeader lHeader;
     void * metaPage = malloc(PAGE_SIZE);
     void * firstPage = malloc(PAGE_SIZE);
-    mHeader.rootPage =INITIAL_PAGE;      //the first node in will be both a leaf and the root
+    mHeader.rootPage = INITIAL_PAGE;      //the first node in will be both a leaf and the root
     mHeader.numOfLeafNodes = 1;
     mHeader.numOfInternalNodes = NO_ENTRIES;
     mHeader.height = INITIAL_HEIGHT;
+    mHeader.type = attrType;
     lHeader.numOfEntries = NO_ENTRIES;
     lHeader.parentPage = NO_PAGE;         //pointer pages are invalid at the begining
     lHeader.leftNode = NO_PAGE;
@@ -566,6 +574,7 @@ void IndexManager::initializeBTree(IXFileHandle ixfileHandle){
     lHeader.freeSpaceOffset = PAGE_SIZE;  //no entries
     setMetaHeader(metaPage, mHeader);
     setLeafNodeHeader(firstPage, lHeader);
+    cout<<"added first pages\n";
     ixfileHandle.appendPage(metaPage);      //commit initial pages
     ixfileHandle.appendPage(firstPage);
     free(metaPage);

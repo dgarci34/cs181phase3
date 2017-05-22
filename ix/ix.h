@@ -138,7 +138,7 @@ class IndexManager {
     RC search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexId * indexId);
 
     // ****************************Node helper functions************************
-    void initializeBTree(IXFileHandle ixfileHandle);
+    void initializeBTree(IXFileHandle ixfileHandle, AttrType attrType);
 
     //get/set struct helpers
     MetaHeader getMetaHeader(void * page);
