@@ -134,6 +134,7 @@ class IndexManager {
     // **************************** Helper Function **********************t ******
     bool fileExists(const string &fileName);
     void setKey(unsigned keyNum, void* data, unsigned size);
+    void printKey(const void * key, AttrType attrType);
     unsigned getKeySize(AttrType att, const void* key);
     RC search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexId * indexId);
 

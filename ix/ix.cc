@@ -102,6 +102,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     InternalNodeEntry iEntry;
     void * keyInMemory;                 //key you extract and compare to
     for (unsigned i =0; i < mHeader.height; i--){
+      cout<< "iterating through height\n";
       iHeader = getInternalNodeHeader(pageData);
       //compare through internal node values
       for (unsigned j =0; j < iHeader.numOfEntries; j++){
@@ -168,15 +169,17 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         }
       }
     }
-
+    cout<< "checked height\n";
     //traversed through internal nodes now at leaf
     LeafNodeHeader lHeader = getLeafNodeHeader(pageData);
     LeafNodeEntry lEntry;
-
+    cout<< "got leaf\n";
     //if there is no space we split the node
     unsigned potentialSize = getSizeofLeafEntry(key, attribute.type);
     unsigned freeSpaceOnPage = getLeafFreeSpace(lHeader);
+    cout<<"freespace = "<< freeSpaceOnPage<< " potentialSize "<< potentialSize<<endl;
     if (potentialSize > freeSpaceOnPage){
+        cout<< "size exceeds free space\n";
         unsigned midpoint = lHeader.numOfEntries / 2;
         unsigned rightSplit = splitLeafAtEntry(pageData, mHeader, lHeader, ixfileHandle, midpoint);
         lEntry = getLeafNodeEntry(pageData, midpoint);
@@ -225,18 +228,24 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         }
         free(midKey);
     }
-    //at this point we can assume we are in the right page and there is enough space
+
+    //in the right page and there is enough space
     void * currentKey;
     bool spotFound;
-    unsigned spot =0;
+    unsigned spot = 0;
     for (unsigned i = 0; i < lHeader.numOfEntries; i ++){
+        cout<< "looking over entry "<<i<<endl;
         lEntry = getLeafNodeEntry(pageData, i);
         currentKey = malloc(lEntry.length);
         getKeyAtOffset(pageData, currentKey, lEntry.offset, lEntry.length);
+        printKey(currentKey, attribute.type);
+
+        cout<< "\n got key and entry\n";
         switch (attribute.type) {
             case TypeInt:
             {
                 if(compareInts(key, currentKey) == LESS_THAN_OR_EQUAL){
+                    cout<<"compared ints\n";
                     spotFound = true;
                     free(currentKey);
                     spot -= 1;
@@ -271,15 +280,20 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     }
     //now inject the data where it belongs
     if (spot == lHeader.numOfEntries || !lHeader.numOfEntries){      //add at the end
+        cout<< "inject after\n";
         injectAfter(pageData, lHeader, key, rid, attribute.type);
     }
     else if(spot < lHeader.numOfEntries -1 && spot){  //add in the middle
+        cout<< "inject between\n";
         injectBetween(pageData, spot, lHeader, key, rid, attribute.type);
     }
     else{   //add before
+        cout<< "inject before\n";
         injectBefore(pageData, lHeader, key, rid, attribute.type);
     }
-    ixfileHandle.writePage(childPageNum,pageData);
+    cout<< "writing to page "<<childPageNum<<endl;
+    if(ixfileHandle.writePage(childPageNum,pageData))
+      return IX_WRITE_FAILED;
     free(pageData);
     return SUCCESS;
 }
@@ -419,17 +433,16 @@ RC IXFileHandle::appendPage(void * data)
 {
     // Seek to the end of the file
     if (fseek(_file, 0, SEEK_END))
-        return IX_APPEND_FAILED;
+        return FH_SEEK_FAILED;
 
     // Write the new page
     if (fwrite(data, 1, PAGE_SIZE, _file) == PAGE_SIZE)
     {
         fflush(_file);
         ixAppendPageCounter++;
-        cout<< "appendPage: "<< ixAppendPageCounter;
         return SUCCESS;
     }
-    return IX_APPEND_FAILED;
+    return FH_WRITE_FAILED;
 }
 
 // **************************** Helper Function ****************************
@@ -574,7 +587,7 @@ void IndexManager::initializeBTree(IXFileHandle ixfileHandle, AttrType attrType)
     lHeader.freeSpaceOffset = PAGE_SIZE;  //no entries
     setMetaHeader(metaPage, mHeader);
     setLeafNodeHeader(firstPage, lHeader);
-    cout<<"added first pages\n";
+  //  cout<<"added first pages\n";
     ixfileHandle.appendPage(metaPage);      //commit initial pages
     ixfileHandle.appendPage(firstPage);
     free(metaPage);
@@ -643,8 +656,8 @@ void IndexManager::setInternalNodeEntry(void * page, InternalNodeEntry internalN
 
 //adds the key followed by an rid to leaf page
 void IndexManager::setLeafKeyAndRidAtOffset(void * page, const Attribute &attribute, const void *key, const RID &rid, unsigned offset, unsigned keylength){
-  memcpy(page + offset - sizeof(RID), &rid, sizeof(RID));
-  memcpy(page + offset - sizeof(RID) - keylength, key, keylength);
+  memcpy(page + offset, key, keylength);
+  memcpy(page + offset + keylength, &rid, sizeof(RID));
 }
 
 //adds a key to a internal node page
@@ -655,8 +668,13 @@ void IndexManager::setInternalKeyAtOffset(void * page, const Attribute &attribut
 RC IndexManager::compareInts(const void * key, const void * toCompareTo){
   int * val1 = (int*)key;
   int * val2 = (int *)toCompareTo;
-  if (val1[0] <= val2[0])
+  int v1 = val1[0];
+  int v2 = val2[0];
+//  cout<< "compare ready " <<v1<< " "<< v2<<endl;;
+  if (v1 <= v2){
+//    cout<< "less than\n";
     return LESS_THAN_OR_EQUAL;
+  }
   return GREATER_THAN;
 }
 //compares float values
@@ -780,13 +798,39 @@ void IndexManager::injectAfter(void * page, LeafNodeHeader &leafNodeHeader, cons
     tempatt.type = attrType;
     leafNodeEntry.length = getKeySize(attrType, key);
     leafNodeEntry.status = alive;
+//    cout<< "header freespace offset "<<leafNodeHeader.freeSpaceOffset<<endl;
     leafNodeEntry.offset = leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID);
     setLeafKeyAndRidAtOffset(page, tempatt, key, rid, leafNodeEntry.offset, leafNodeEntry.length);
     leafNodeHeader.numOfEntries++;
     leafNodeHeader.freeSpaceOffset = leafNodeEntry.offset;
+//    cout<< "entry offset "<<leafNodeEntry.offset<< " lenght "<< leafNodeEntry.length<<endl;
     setLeafNodeHeader(page, leafNodeHeader);
     setLeafNodeEntry(page, leafNodeEntry, leafNodeHeader.numOfEntries -1);
 
+}
+//shows an individual key for debuging purposes
+void IndexManager::printKey(const void *key, AttrType attrType){
+  switch (attrType) {
+    case TypeInt:
+    {
+      int * iKey = (int*)key;
+      cout<< iKey[0];
+    }
+    case TypeReal:
+    {
+      float * rKey = (float *)key;
+      cout<< rKey[0];
+    }
+    case TypeVarChar:
+    {
+      int * size = (int *)key;
+      char * cast = (char *)key;
+      string out = "";
+      for (int i = 0; i < size[0]; i++)
+        out[i] = cast[i];
+      cout<< out;
+    }
+  }
 }
 
 // *************************************************************************
