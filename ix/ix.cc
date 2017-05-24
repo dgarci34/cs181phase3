@@ -79,8 +79,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     cout<<"filename: "<<ixfileHandle.fileName<<endl;
     if (ixfileHandle.fileName == "")
       return IX_FILE_DN_EXIST;
-    cout<< "attempting to print key\n";
-    printKey(key, attribute.type);
+//    printKey(key, attribute.type);
     //if no pages yet beging new tree
     cout<<"pages: "<<ixfileHandle.getNumberOfPages()<<endl;
     if (!ixfileHandle.getNumberOfPages())
@@ -115,7 +114,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
           {
             keyInMemory = malloc(INT_SIZE);
             getKeyAtOffset(pageData, keyInMemory,iEntry.offset, iEntry.length);
-            if (compareInts(key, keyInMemory) == LESS_THAN_OR_EQUAL){
+            int compare = compareInts(key, keyInMemory);
+            if (compare == LESS_THAN || compare == EQUAL_TO){
               childPageNum = iEntry.leftChild;
               childFound = true;
               free(keyInMemory);
@@ -132,7 +132,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
           {
             keyInMemory = malloc(REAL_SIZE);
             getKeyAtOffset(pageData, keyInMemory,iEntry.offset, iEntry.length);
-            if (compareReals(key, keyInMemory) == LESS_THAN_OR_EQUAL){
+            int compare = compareReals(key, keyInMemory);
+            if (compare == LESS_THAN|| compare == EQUAL_TO){
               childPageNum = iEntry.leftChild;
               childFound = true;
               free(keyInMemory);
@@ -149,7 +150,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
           {
             keyInMemory = malloc(iEntry.length);
             getKeyAtOffset(pageData, keyInMemory,iEntry.offset, iEntry.length);
-            if (compareVarChars(key, keyInMemory) == LESS_THAN_OR_EQUAL){
+            int compare = compareVarChars(key, keyInMemory);
+            if (compare == LESS_THAN || compare == EQUAL_TO){
               childPageNum = iEntry.leftChild;
               childFound = true;
               free(keyInMemory);
@@ -190,7 +192,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         switch (attribute.type) {
             case TypeInt:
             {
-                if (compareInts(key, midKey) == LESS_THAN_OR_EQUAL){
+                int compare = compareInts(key, midKey);
+                if (compare == LESS_THAN || compare == EQUAL_TO){
                     //insert into left split node
                     break;
                 }
@@ -203,7 +206,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             }
             case TypeReal:
             {
-                if (compareReals(key, midKey) == LESS_THAN_OR_EQUAL){
+                int compare = compareReals(key,midKey);
+                if (compare == LESS_THAN || compare == EQUAL_TO){
                     //insert into left split node
                     break;
                 }
@@ -216,7 +220,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             }
             case TypeVarChar:
             {
-                if (compareInts(key, midKey) == LESS_THAN_OR_EQUAL){
+                int compare = compareVarChars(key,midKey);
+                if (compare == LESS_THAN || compare == EQUAL_TO){
                     //insert into left split node
                     break;
                 }
@@ -246,7 +251,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         switch (attribute.type) {
             case TypeInt:
             {
-                if(compareInts(key, currentKey) == LESS_THAN_OR_EQUAL){
+                int compare = compareInts(key,currentKey);
+                if(compare == LESS_THAN || compare == EQUAL_TO){
                     cout<<"compared ints\n";
                     spotFound = true;
                     free(currentKey);
@@ -256,7 +262,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             }
             case TypeReal:
             {
-                if(compareReals(key,currentKey) == LESS_THAN_OR_EQUAL){
+                int compare = compareReals(key,currentKey);
+                if(compare == LESS_THAN || compare == EQUAL_TO){
                     spotFound = true;
                     free(currentKey);
                     spot -= 1;
@@ -265,7 +272,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             }
             case TypeVarChar:
             {
-                if(compareVarChars(key,currentKey) == LESS_THAN_OR_EQUAL){
+                int compare = compareVarChars(key,currentKey);
+                if(compare == LESS_THAN || compare == EQUAL_TO){
                     spotFound = true;
                     free(currentKey);
                     spot -= 1;
@@ -668,24 +676,19 @@ void IndexManager::setInternalKeyAtOffset(void * page, const Attribute &attribut
 }
 //compares integer values
 RC IndexManager::compareInts(const void * key, const void * toCompareTo){
-  int * val1 = (int*)key;
-  int * val2 = (int *)toCompareTo;
-  int v1 = val1[0];
-  int v2 = val2[0];
-//  cout<< "compare ready " <<v1<< " "<< v2<<endl;;
-  if (v1 <= v2){
-//    cout<< "less than\n";
-    return LESS_THAN_OR_EQUAL;
-  }
-  return GREATER_THAN;
+  int val1 = ((int*)key)[0];
+  int val2 = ((int *)toCompareTo)[0];
+  if (val1 > val2)
+    return GREATER_THAN;
+  return val1 == val2;
 }
 //compares float values
 RC IndexManager:: compareReals(const void * key, const void * toCompareTo){
-  float * val1 = (float *)key;
-  float * val2 = (float *)toCompareTo;
-  if (val1[0] <= val2[0])
-    return LESS_THAN_OR_EQUAL;
-  return GREATER_THAN;
+  float val1 = ((float*)key)[0];
+  float val2 = ((float *)toCompareTo)[0];
+  if (val1 > val2)
+    return GREATER_THAN;
+  return val1 == val2;
 }
 //compares varchar values
 RC IndexManager::compareVarChars(const void * key, const void * toCompareTo){
@@ -693,15 +696,21 @@ RC IndexManager::compareVarChars(const void * key, const void * toCompareTo){
   int *size2 = (int*)toCompareTo;
   char * cast1 = (char*)key;
   char * cast2 = (char*)toCompareTo;
+  cast1 += INT_SIZE;
+  cast2 += INT_SIZE;
   string str1 = "";
   string str2 = "";
   for (int i =0; i < size1[0]; i ++)
     str1[i] = cast1[i];
   for (int i =0; i < size2[0]; i++)
     str2[i] = cast2[i];
-   if (str1.compare(str2) < 1)
-    return LESS_THAN_OR_EQUAL;
-  return GREATER_THAN;
+    int compare = str1.compare(str2);
+   if (compare > 0)
+    return GREATER_THAN;
+  else if (compare < 0)
+    return LESS_THAN;
+  return EQUAL_TO;
+
 }
 //returns the key at offset
 void IndexManager::getKeyAtOffset(void * page, void * dest, unsigned offset, unsigned length){
@@ -815,7 +824,7 @@ void IndexManager::printKey(const void *key, AttrType attrType){
   switch (attrType) {
     case TypeInt:
     {
-        cout<< "printing int\n";
+//        cout<< "printing int\n";
       int iKey = ((long*)key)[0];
         int * out = (int *) key;
         printf("%d \n", iKey);
@@ -838,7 +847,7 @@ void IndexManager::printKey(const void *key, AttrType attrType){
         break;
     }
   }
-    
+
 }
 
 // *************************************************************************

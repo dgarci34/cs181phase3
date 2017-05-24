@@ -6,6 +6,8 @@
 #include <iostream>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 #include "../rbf/rbfm.h"
 
@@ -32,7 +34,8 @@
 #define META_PAGE 0
 #define INITIAL_PAGE 1
 
-#define LESS_THAN_OR_EQUAL 1
+#define LESS_THAN 0
+#define EQUAL_TO 1
 #define GREATER_THAN 2
 
 using namespace std;
