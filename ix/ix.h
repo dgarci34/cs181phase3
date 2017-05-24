@@ -85,6 +85,7 @@ typedef struct LeafNodeHeader {
 
 typedef struct LeafNodeEntry {
     unsigned offset;
+    unsigned numberOfRIDs;
     unsigned length;
     ixStatus status;
 } LeafNodeEntry;
@@ -160,6 +161,7 @@ class IndexManager {
     void setLeafKeyAndRidAtOffset(void * page, const Attribute &attribute, const void *key, const RID &rid, unsigned offset, unsigned keylength);
     void setInternalKeyAtOffset(void * page, const Attribute &attribute, const void *key, unsigned keylength, unsigned offset);
     void getKeyAtOffset(void * page, void * dest, unsigned offset, unsigned length);
+    void addAdditionalRID(void * page,LeafNodeHeader leafNodeHeader, LeafNodeEntry leafNodeEntry, RID newRid, unsigned entryPos);
 
     //comparison helpers
     RC compareInts(const void * key, const void * toCompareTo);

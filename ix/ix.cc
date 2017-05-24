@@ -766,6 +766,7 @@ void IndexManager::injectBefore(void * page, LeafNodeHeader &leafNodeHeader, con
     //insert the new begining one
     memcpy(page + PAGE_SIZE - leafNodeEntry.length - sizeof(RID), key, leafNodeEntry.length);
     memcpy(page + PAGE_SIZE - sizeof(RID), &rid, sizeof(RID));
+    leafNodeEntry.numberOfRIDs =1;
     setLeafNodeEntry(page, leafNodeEntry, FIRST_ENTRY);
     leafNodeHeader.numOfEntries++;
     //update leaf header
@@ -779,6 +780,7 @@ void IndexManager::injectBetween(void * page, unsigned position, LeafNodeHeader 
   LeafNodeEntry leafNodeEntry;
   LeafNodeEntry following;
   leafNodeEntry.status = alive;
+  leafNodeEntry.numberOfRIDs =1;
   leafNodeEntry.length = getKeySize(attrType, key);
   Attribute tempatt;
   tempatt.type = attrType;
@@ -814,6 +816,7 @@ void IndexManager::injectAfter(void * page, LeafNodeHeader &leafNodeHeader, cons
     setLeafKeyAndRidAtOffset(page, tempatt, key, rid, leafNodeEntry.offset, leafNodeEntry.length);
     leafNodeHeader.numOfEntries++;
     leafNodeHeader.freeSpaceOffset = leafNodeEntry.offset;
+    leafNodeEntry.numberOfRIDs =1;
 //    cout<< "entry offset "<<leafNodeEntry.offset<< " lenght "<< leafNodeEntry.length<<endl;
     setLeafNodeHeader(page, leafNodeHeader);
     setLeafNodeEntry(page, leafNodeEntry, leafNodeHeader.numOfEntries -1);
@@ -847,7 +850,14 @@ void IndexManager::printKey(const void *key, AttrType attrType){
         break;
     }
   }
-
 }
-
-// *************************************************************************
+//adds an aditional RID to an existing leaf entry
+void IndexManager::addAdditionalRID(void * page,LeafNodeHeader leafNodeHeader, LeafNodeEntry leafNodeEntry, RID newRid, unsigned entryPos){
+  leafNodeHeader.freeSpaceOffset =- sizeof(RID);
+  leafNodeEntry.offset =- sizeof(RID);
+  memcpy(page + leafNodeHeader.freeSpaceOffset, page + leafNodeHeader.freeSpaceOffset - sizeof(RID),leafNodeEntry.offset - leafNodeHeader.freeSpaceOffset + leafNodeEntry.length + (leafNodeEntry.numberOfRIDs * sizeof(RID)));
+  memcpy(page +leafNodeHeader.freeSpaceOffset + leafNodeEntry.length + (leafNodeEntry.numberOfRIDs * sizeof(RID)), &newRid, sizeof(RID));
+  leafNodeEntry.numberOfRIDs++;
+  setLeafNodeHeader(page, leafNodeHeader);
+  setLeafNodeEntry(page, leafNodeEntry, entryPos);
+}
