@@ -79,6 +79,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     cout<<"filename: "<<ixfileHandle.fileName<<endl;
     if (ixfileHandle.fileName == "")
       return IX_FILE_DN_EXIST;
+    cout<< "attempting to print key\n";
+    printKey(key, attribute.type);
     //if no pages yet beging new tree
     cout<<"pages: "<<ixfileHandle.getNumberOfPages()<<endl;
     if (!ixfileHandle.getNumberOfPages())
@@ -813,13 +815,17 @@ void IndexManager::printKey(const void *key, AttrType attrType){
   switch (attrType) {
     case TypeInt:
     {
-      int * iKey = (int*)key;
-      cout<< iKey[0];
+        cout<< "printing int\n";
+      int iKey = ((long*)key)[0];
+        int * out = (int *) key;
+        printf("%d \n", iKey);
+        break;
     }
     case TypeReal:
     {
       float * rKey = (float *)key;
-      cout<< rKey[0];
+      cout<< rKey[0]<<endl;
+        break;
     }
     case TypeVarChar:
     {
@@ -828,9 +834,11 @@ void IndexManager::printKey(const void *key, AttrType attrType){
       string out = "";
       for (int i = 0; i < size[0]; i++)
         out[i] = cast[i];
-      cout<< out;
+      cout<< out<<endl;
+        break;
     }
   }
+    
 }
 
 // *************************************************************************
