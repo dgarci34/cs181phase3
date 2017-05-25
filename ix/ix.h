@@ -141,6 +141,7 @@ class IndexManager {
     void setKey(unsigned keyNum, void* data, unsigned size);
     void printKey(const void * key, AttrType attrType);
 	void printRids(void * page, LeafNodeEntry leafNodeEntry);
+	void showLeaf(void * page, AttrType attrType);
     unsigned getKeySize(AttrType att, const void* key);
     RC search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexId * indexId);
 
