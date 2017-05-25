@@ -76,14 +76,14 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid){
     //if no file error
-    cout<<"filename: "<<ixfileHandle.fileName<< " ";
+//    cout<<"filename: "<<ixfileHandle.fileName<< " ";
     printKey(key, attribute.type);
 	cout<<endl;
     if (ixfileHandle.fileName == "")
       return IX_FILE_DN_EXIST;
 //    printKey(key, attribute.type);
     //if no pages yet beging new tree
-    cout<<"pages: "<<ixfileHandle.getNumberOfPages()<<endl;
+//    cout<<"pages: "<<ixfileHandle.getNumberOfPages()<<endl;
     if (!ixfileHandle.getNumberOfPages())
       initializeBTree(ixfileHandle, attribute.type);
     //get meta header
@@ -93,7 +93,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     MetaHeader mHeader = getMetaHeader(pageData);
     if (mHeader.type != attribute.type)
       return IX_CONFLICTING_TYPES;
-    cout<<"meta header check: "<<mHeader.height<<" root: "<<mHeader.rootPage<< " leafs "<< mHeader.numOfLeafNodes<<endl;
+//    cout<<"meta header check: "<<mHeader.height<<" root: "<<mHeader.rootPage<< " leafs "<< mHeader.numOfLeafNodes<<endl;
 
     //begin at the root
     ixfileHandle.readPage(mHeader.rootPage, pageData);
@@ -179,11 +179,11 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     //traversed through internal nodes now at leaf
     LeafNodeHeader lHeader = getLeafNodeHeader(pageData);
     LeafNodeEntry lEntry;
-    cout<< "got leaf, "<< childPageNum<< "\n";
+//    cout<< "got leaf, "<< childPageNum<< "\n";
     //if there is no space we split the node
     unsigned potentialSize = getSizeofLeafEntry(key, attribute.type);
     unsigned freeSpaceOnPage = getLeafFreeSpace(lHeader);
-    cout<<"freespace = "<< freeSpaceOnPage<< " potentialSize = "<< potentialSize<<endl;
+//    cout<<"freespace = "<< freeSpaceOnPage<< " potentialSize = "<< potentialSize<<endl;
     if (potentialSize > freeSpaceOnPage){
         cout<< "size exceeds free space\n";
         unsigned midpoint = lHeader.numOfEntries / 2;
@@ -244,12 +244,12 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     bool addedRID = false;
     unsigned spot = 0;
     for (unsigned i = 0; i < lHeader.numOfEntries; i ++){
-        cout<< "looking over entry "<<i<<" ";
+//      cout<< "looking over entry "<<i<<" ";
         lEntry = getLeafNodeEntry(pageData, i);
         currentKey = malloc(lEntry.length);
         getKeyAtOffset(pageData, currentKey, lEntry.offset, lEntry.length);
-        printKey(currentKey, attribute.type);
-        cout<< "\n";
+//        printKey(currentKey, attribute.type);
+//        cout<< "\n";
         switch (attribute.type) {
             case TypeInt:
             {
@@ -265,7 +265,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
                     spot -= 1;
                 }
 				else{
-					cout<< "ints larger than\n";
+//					cout<< "ints larger than\n";
 				}
                 break;
             }
@@ -324,7 +324,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
       }
     }
     else{
-      cout<< "added rid no insert\n";
+//      cout<< "added rid no insert\n";
     }
 //    cout<< "writing to page "<<childPageNum<<endl;
     if(ixfileHandle.writePage(childPageNum,pageData))
@@ -333,8 +333,9 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 	ixfileHandle.readPage(1, pageData);
 	LeafNodeHeader hCheck = getLeafNodeHeader(pageData);
 	showLeaf(pageData, attribute.type);
-    free(pageData);
-    return SUCCESS;
+  showLeafOffsetsAndLengths(pageData);
+  free(pageData);
+  return SUCCESS;
 }
 
 
@@ -924,4 +925,15 @@ void IndexManager::showLeaf(void * page, AttrType attrType){
 		free(key);
 	}
 	cout<<endl;
+}
+//used to print out the offsets for debugging purposes
+void IndexManager::showLeafOffsetsAndLengths(void * page){
+  LeafNodeHeader lHeader = getLeafNodeHeader(page);
+  cout<< "H freeSpaceOffset: "<<lHeader.freeSpaceOffset;
+  LeafNodeEntry lEntry;
+  for (unsigned i =0; i < lHeader.numOfEntries; i ++){
+    lEntry = getLeafNodeEntry(page, i);
+    cout<< " E offset: "<<lEntry. offset<< " E length: "<< lEntry.length;
+  }
+  cout<< endl;
 }
