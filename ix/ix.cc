@@ -759,14 +759,14 @@ void IndexManager::injectBefore(void * page, LeafNodeHeader &leafNodeHeader, con
       following.offset += sizeof(RID);
       setLeafNodeEntry(page, following, i);
     }
-    //memory move data left
-    memmove(page - leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID), page - leafNodeHeader.freeSpaceOffset, PAGE_SIZE - leafNodeHeader.freeSpaceOffset);
+    // move data left
+    memcpy(page + leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID), page + leafNodeHeader.freeSpaceOffset, PAGE_SIZE - leafNodeHeader.freeSpaceOffset);
     //memory move entries right
-    memmove(page + sizeof(LeafNodeHeader) + sizeof(LeafNodeEntry), page + sizeof(LeafNodeHeader), leafNodeHeader.numOfEntries * sizeof(LeafNodeEntry));
+    memcpy(page + sizeof(LeafNodeHeader) + sizeof(LeafNodeEntry), page + sizeof(LeafNodeHeader), leafNodeHeader.numOfEntries * sizeof(LeafNodeEntry));
     //insert the new begining one
     memcpy(page + PAGE_SIZE - leafNodeEntry.length - sizeof(RID), key, leafNodeEntry.length);
     memcpy(page + PAGE_SIZE - sizeof(RID), &rid, sizeof(RID));
-    leafNodeEntry.numberOfRIDs =1;
+    leafNodeEntry.numberOfRIDs = 1;
     setLeafNodeEntry(page, leafNodeEntry, FIRST_ENTRY);
     leafNodeHeader.numOfEntries++;
     //update leaf header
@@ -793,9 +793,9 @@ void IndexManager::injectBetween(void * page, unsigned position, LeafNodeHeader 
     setLeafNodeEntry(page, following, i);
   }
   //shift following keys left
-  memmove(page + leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID), page + leafNodeHeader.freeSpaceOffset, leafNodeHeader.freeSpaceOffset - previous.offset);
+  memcpy(page + leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID), page + leafNodeHeader.freeSpaceOffset, leafNodeHeader.freeSpaceOffset - previous.offset);
   //shift following entries right
-  memmove(page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * (position+ 1)), page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * position), sizeof(LeafNodeEntry) * (leafNodeHeader.numOfEntries - position));
+  memcpy(page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * (position+ 1)), page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * position), sizeof(LeafNodeEntry) * (leafNodeHeader.numOfEntries - position));
   //insert key and entry in opened space
   setLeafKeyAndRidAtOffset(page, tempatt, key, rid, leafNodeEntry.offset, leafNodeEntry.length);
   setLeafNodeEntry(page, leafNodeEntry, position);
@@ -851,6 +851,15 @@ void IndexManager::printKey(const void *key, AttrType attrType){
     }
   }
 }
+//prints rids in order for debugging purposes
+void IndexManager::printRids(void * page, LeafNodeEntry leafNodeEntry){
+	RID out;
+	for (unsigned i =0 i < leafNodeEntry.numberOfRids; i ++){
+		memcpy(&out, page + leafNodeEntry.offset + LeafNodeEntry.length + (i * sizeof(RID)));
+		printf(" ", );
+		}
+}
+
 //adds an aditional RID to an existing leaf entry
 void IndexManager::addAdditionalRID(void * page,LeafNodeHeader leafNodeHeader, LeafNodeEntry leafNodeEntry, RID newRid, unsigned entryPos){
   leafNodeHeader.freeSpaceOffset =- sizeof(RID);
