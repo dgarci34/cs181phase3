@@ -76,7 +76,8 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid){
     //if no file error
-    cout<<"filename: "<<ixfileHandle.fileName<<endl;
+    cout<<"filename: "<<ixfileHandle.fileName<< " ";
+    printKey(key, attribute.type);
     if (ixfileHandle.fileName == "")
       return IX_FILE_DN_EXIST;
 //    printKey(key, attribute.type);
@@ -89,9 +90,9 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     if (ixfileHandle.readPage(META_PAGE, pageData))
       return IX_READ_FAILED;
     MetaHeader mHeader = getMetaHeader(pageData);
+    if (mHeader.type != attribute.type)
+      return IX_CONFLICTING_TYPES;
     cout<<"meta header check: "<<mHeader.height<<" root: "<<mHeader.rootPage<< " leafs "<< mHeader.numOfLeafNodes<<endl;
-    if (mHeader.type == attribute.type)
-      cout<< "valid type\n";
 
     //begin at the root
     ixfileHandle.readPage(mHeader.rootPage, pageData);
@@ -173,15 +174,15 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         }
       }
     }
-    cout<< "checked height\n";
+//    cout<< "checked height\n";
     //traversed through internal nodes now at leaf
     LeafNodeHeader lHeader = getLeafNodeHeader(pageData);
     LeafNodeEntry lEntry;
-    cout<< "got leaf\n";
+    cout<< "got leaf, "<< childPageNum<< "\n";
     //if there is no space we split the node
     unsigned potentialSize = getSizeofLeafEntry(key, attribute.type);
     unsigned freeSpaceOnPage = getLeafFreeSpace(lHeader);
-    cout<<"freespace = "<< freeSpaceOnPage<< " potentialSize "<< potentialSize<<endl;
+    cout<<"freespace = "<< freeSpaceOnPage<< " potentialSize = "<< potentialSize<<endl;
     if (potentialSize > freeSpaceOnPage){
         cout<< "size exceeds free space\n";
         unsigned midpoint = lHeader.numOfEntries / 2;
@@ -238,72 +239,92 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 
     //in the right page and there is enough space
     void * currentKey;
-    bool spotFound;
+    bool spotFound = false;
+    bool addedRID = false;
     unsigned spot = 0;
     for (unsigned i = 0; i < lHeader.numOfEntries; i ++){
-        cout<< "looking over entry "<<i<<endl;
+        cout<< "looking over entry "<<i<<" ";
         lEntry = getLeafNodeEntry(pageData, i);
         currentKey = malloc(lEntry.length);
         getKeyAtOffset(pageData, currentKey, lEntry.offset, lEntry.length);
         printKey(currentKey, attribute.type);
-
-        cout<< "\n got key and entry\n";
+        cout<< "got key and entry\n";
         switch (attribute.type) {
             case TypeInt:
             {
                 int compare = compareInts(key,currentKey);
-                if(compare == LESS_THAN || compare == EQUAL_TO){
-                    cout<<"compared ints\n";
-                    spotFound = true;
-                    free(currentKey);
-                    spot -= 1;
-                    break;
+                if (compare == EQUAL_TO){
+                  cout<< "equal things so add rid\n";
+                  addAdditionalRID(pageData, lHeader, lEntry, rid, i);
+                  addedRID = true;
                 }
+                else if(compare == LESS_THAN){
+                    cout<<" ints less than\n";
+                    spotFound = true;
+                    spot -= 1;
+                }
+                break;
             }
             case TypeReal:
             {
                 int compare = compareReals(key,currentKey);
-                if(compare == LESS_THAN || compare == EQUAL_TO){
-                    spotFound = true;
-                    free(currentKey);
-                    spot -= 1;
-                    break;
+                if (compare == EQUAL_TO){
+                  cout<< "equal things so add rid\n";
+                  addAdditionalRID(pageData, lHeader, lEntry, rid, i);
+                  addedRID = true;
                 }
+                else if(compare == LESS_THAN){
+                    spotFound = true;
+                    spot -= 1;
+                }
+                break;
             }
             case TypeVarChar:
             {
                 int compare = compareVarChars(key,currentKey);
-                if(compare == LESS_THAN || compare == EQUAL_TO){
-                    spotFound = true;
-                    free(currentKey);
-                    spot -= 1;
-                    break;
+                if (compare == EQUAL_TO){
+                  cout<< "equal things so add rid\n";
+                  addAdditionalRID(pageData, lHeader, lEntry, rid, i);
+                  addedRID = true;
                 }
+                else if(compare == LESS_THAN || compare == EQUAL_TO){
+                    spotFound = true;
+                    spot -= 1;
+                }
+                break;
             }
         }
-        if (spotFound)
+        if (spotFound || addedRID){
+            free(currentKey);
             break;
+          }
         if(i == lHeader.numOfEntries -1){ //will have to be added to end of page
             free(currentKey);
             spot = i;
         }
     }
-    //now inject the data where it belongs
-    if (spot == lHeader.numOfEntries || !lHeader.numOfEntries){      //add at the end
-        cout<< "inject after\n";
-        injectAfter(pageData, lHeader, key, rid, attribute.type);
+    if (!addedRID){
+      //now inject the data where it belongs
+      if (spot == lHeader.numOfEntries || !lHeader.numOfEntries){      //add at the end
+          cout<< "inject after\n";
+          injectAfter(pageData, lHeader, key, rid, attribute.type);
+      }
+      else if(spot < lHeader.numOfEntries -1 && spot){  //add in the middle
+          cout<< "inject between\n";
+          injectBetween(pageData, spot, lHeader, key, rid, attribute.type);
+      }
+      else{   //add before
+          cout<< "inject before\n";
+          injectBefore(pageData, lHeader, key, rid, attribute.type);
+      }
     }
-    else if(spot < lHeader.numOfEntries -1 && spot){  //add in the middle
-        cout<< "inject between\n";
-        injectBetween(pageData, spot, lHeader, key, rid, attribute.type);
-    }
-    else{   //add before
-        cout<< "inject before\n";
-        injectBefore(pageData, lHeader, key, rid, attribute.type);
+    else{
+      cout<< "added rid no insert\n";
     }
     cout<< "writing to page "<<childPageNum<<endl;
     if(ixfileHandle.writePage(childPageNum,pageData))
       return IX_WRITE_FAILED;
+
     free(pageData);
     return SUCCESS;
 }
@@ -580,7 +601,7 @@ RC IndexManager::search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, Ind
 // ****************************Node helper functions************************
 // initialize B+ Tree
 void IndexManager::initializeBTree(IXFileHandle ixfileHandle, AttrType attrType){
-    cout<<"initialized BTREE\n";
+//    cout<<"initialized BTREE\n";
     MetaHeader mHeader;
     LeafNodeHeader lHeader;
     void * metaPage = malloc(PAGE_SIZE);
@@ -862,10 +883,17 @@ void IndexManager::printRids(void * page, LeafNodeEntry leafNodeEntry){
 
 //adds an aditional RID to an existing leaf entry
 void IndexManager::addAdditionalRID(void * page,LeafNodeHeader leafNodeHeader, LeafNodeEntry leafNodeEntry, RID newRid, unsigned entryPos){
+  cout<< "addinging an aditional RID value\n";
+  memcpy(page + leafNodeHeader.freeSpaceOffset - sizeof(RID), page + leafNodeHeader.freeSpaceOffset,leafNodeEntry.offset - leafNodeHeader.freeSpaceOffset + leafNodeEntry.length + (leafNodeEntry.numberOfRIDs * sizeof(RID)));
   leafNodeHeader.freeSpaceOffset =- sizeof(RID);
-  leafNodeEntry.offset =- sizeof(RID);
-  memcpy(page + leafNodeHeader.freeSpaceOffset, page + leafNodeHeader.freeSpaceOffset - sizeof(RID),leafNodeEntry.offset - leafNodeHeader.freeSpaceOffset + leafNodeEntry.length + (leafNodeEntry.numberOfRIDs * sizeof(RID)));
-  memcpy(page +leafNodeHeader.freeSpaceOffset + leafNodeEntry.length + (leafNodeEntry.numberOfRIDs * sizeof(RID)), &newRid, sizeof(RID));
+  //change offsets in all individaul entries
+  LeafNodeEntry change;
+  for (unsigned i =0; i < leafNodeHeader.numOfEntries; i ++){
+    change = getLeafNodeEntry(page, i);
+    change.offset =- sizeof(RID);
+    setLeafNodeEntry(page, change, i);
+  }
+  memcpy(page + leafNodeEntry.offset + leafNodeEntry.length + (leafNodeEntry.numberOfRIDs * sizeof(RID)), &newRid, sizeof(RID));
   leafNodeEntry.numberOfRIDs++;
   setLeafNodeHeader(page, leafNodeHeader);
   setLeafNodeEntry(page, leafNodeEntry, entryPos);
