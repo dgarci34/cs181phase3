@@ -854,9 +854,9 @@ void IndexManager::printKey(const void *key, AttrType attrType){
 //prints rids in order for debugging purposes
 void IndexManager::printRids(void * page, LeafNodeEntry leafNodeEntry){
 	RID out;
-	for (unsigned i =0 i < leafNodeEntry.numberOfRids; i ++){
-		memcpy(&out, page + leafNodeEntry.offset + LeafNodeEntry.length + (i * sizeof(RID)));
-		printf(" ", );
+	for (unsigned i =0; i < leafNodeEntry.numberOfRIDs; i ++){
+		memcpy(&out, page + leafNodeEntry.offset + leafNodeEntry.length + (i * sizeof(RID)), sizeof(RID));
+		printf(" [%d,%d] ",out.pageNum,out.slotNum);
 		}
 }
 
