@@ -24,6 +24,7 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
     RID rid;
     int key = 200;
 	int keyBig = 300;
+    int keyBigger = 400;
 	int keySmall = 100;
 	int keyMid = 250;
     rid.pageNum = 500;
@@ -55,14 +56,19 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
     assert(rc == success && "indexManager::insertEntry() should not fail.");
 	
 //further testing
-//	rc = indexManager->insertEntry(ixfileHandle, attribute, &keyBig, rid);
+//	rc = indexManager->insertEntry(ixfileHandle, attribute, &keySmall, rid);
 //    assert(rc == success && "indexManager::insertEntry() should not fail.");
-	
-	rc = indexManager->insertEntry(ixfileHandle, attribute, &keySmall, rid);
+ 
+	rc = indexManager->insertEntry(ixfileHandle, attribute, &keyBig, rid);
     assert(rc == success && "indexManager::insertEntry() should not fail.");
-	
-//	rc = indexManager->insertEntry(ixfileHandle, attribute, &keyMid, rid);
+    
+	rc = indexManager->insertEntry(ixfileHandle, attribute, &keyMid, rid);
+    assert(rc == success && "indexManager::insertEntry() should not fail.");
+
+//    rc = indexManager->insertEntry(ixfileHandle, attribute, &keySmall, rid);
 //    assert(rc == success && "indexManager::insertEntry() should not fail.");
+
+
 	
     // collect counters
     rc = ixfileHandle.collectCounterValues(readPageCountAfter, writePageCountAfter, appendPageCountAfter);
