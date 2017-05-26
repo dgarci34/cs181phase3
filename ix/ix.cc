@@ -333,12 +333,16 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 //    cout<< "writing to page "<<childPageNum<<endl;
     if(ixfileHandle.writePage(childPageNum,pageData))
       return IX_WRITE_FAILED;
-	cout<< "check\n";
-	ixfileHandle.readPage(1, pageData);
-	LeafNodeHeader hCheck = getLeafNodeHeader(pageData);
-	showLeaf(pageData, attribute.type);
-  showLeafOffsetsAndLengths(pageData);
   free(pageData);
+	cout<< "check\n";
+  void * checkPage = malloc(PAGE_SIZE);
+	ixfileHandle.readPage(1, checkPage);
+	LeafNodeHeader hCheck = getLeafNodeHeader(checkPage);
+	showLeaf(checkPage, attribute.type);
+//  showLeafOffsetsAndLengths(checkPage);
+  cout<< "pre free\n";
+  free(checkPage);
+  cout<< "post free\n";
   return SUCCESS;
 }
 
@@ -817,6 +821,7 @@ void IndexManager::injectBetween(void * page, unsigned position, LeafNodeHeader 
     LeafNodeEntry leafNodeEntry;
     leafNodeEntry.length = getKeySize(attrType, key);
     leafNodeEntry.offset = original.offset - sizeof(RID) - leafNodeEntry.length;
+    cout<< "new off: "<<leafNodeEntry.offset<<endl;
     leafNodeEntry.status = alive;
     leafNodeEntry.numberOfRIDs = 1;
 
@@ -841,7 +846,7 @@ void IndexManager::injectBetween(void * page, unsigned position, LeafNodeHeader 
     memcpy(page + dest, page + source, byteSize);
     //insert the new one
     following = getLeafNodeEntry(page, position +1);
-    leafNodeEntry.offset = following.offset - leafNodeEntry.length - sizeof(RID);
+//    leafNodeEntry.offset = following.offset - leafNodeEntry.length - sizeof(RID);
     memcpy(page + leafNodeEntry.offset, key, leafNodeEntry.length);
     memcpy(page + leafNodeEntry.offset + leafNodeEntry.length, &rid, sizeof(RID));
     leafNodeHeader.numOfEntries++;
@@ -909,23 +914,33 @@ void IndexManager::printRids(void * page, LeafNodeEntry leafNodeEntry){
 
 //adds an aditional RID to an existing leaf entry
 void IndexManager::addAdditionalRID(void * page,LeafNodeHeader leafNodeHeader, LeafNodeEntry leafNodeEntry, RID newRid, unsigned entryPos){
-    unsigned dest = leafNodeHeader.freeSpaceOffset - sizeof(RID);
-    unsigned source = leafNodeHeader.freeSpaceOffset;
-    unsigned byteSize = leafNodeEntry.offset + leafNodeEntry.length + (sizeof(RID)* leafNodeEntry.numberOfRIDs)  - leafNodeHeader.freeSpaceOffset;
-    memcpy(page + dest, page + source, byteSize);
+  //move data left
+//  cout<< "size ="<<leafNodeEntry.length+ sizeof(RID)<<endl;
+  unsigned dest = leafNodeHeader.freeSpaceOffset - sizeof(RID);
+  unsigned source = leafNodeHeader.freeSpaceOffset;
+//  cout<<"preiviously has this many rid's: "<<leafNodeEntry.numberOfRIDs<<endl;
+  unsigned byteSize = leafNodeEntry.offset  + leafNodeEntry.length + (sizeof(RID) * leafNodeEntry.numberOfRIDs)- leafNodeHeader.freeSpaceOffset;
+  cout<< "dest, origin, size "<<dest<< " "<<source<< " "<<byteSize<<endl;
+  void * temp = malloc(byteSize);
+  memcpy(temp, page + source, byteSize);
+  memcpy(page + dest, temp, byteSize);
+  free(temp);
   leafNodeHeader.freeSpaceOffset = leafNodeHeader.freeSpaceOffset - sizeof(RID);
-  //change offsets in all individaul entries
-  LeafNodeEntry change;
-  for (unsigned i =entryPos; i < leafNodeHeader.numOfEntries; i ++){
-//	cout<< "changing all offsets\n";
-    change = getLeafNodeEntry(page, i);
-    change.offset = change.offset - sizeof(RID);
-    setLeafNodeEntry(page, change, i);
-  }
-    leafNodeEntry = getLeafNodeEntry(page, entryPos);
-    dest =leafNodeEntry.offset + leafNodeEntry.length + (leafNodeEntry.numberOfRIDs * sizeof(RID));
-  memcpy(page + dest, &newRid, sizeof(RID));
   setLeafNodeHeader(page, leafNodeHeader);
+  LeafNodeEntry check;
+  void * tempKey = malloc(INT_SIZE);
+  for (unsigned i = entryPos; i < leafNodeHeader.numOfEntries; i ++){
+    cout<< "checking key at changed offset\n";
+    check = getLeafNodeEntry(page, i);
+    check.offset = check.offset - sizeof(RID);
+    getKeyAtOffset(page,tempKey,check.offset, INT_SIZE);
+    printKey(tempKey, TypeInt);
+    cout<< "\n";
+    setLeafNodeEntry(page, check, i);
+  }
+  free(tempKey);
+  leafNodeEntry = getLeafNodeEntry(page, entryPos);
+  memcpy(page + leafNodeEntry.offset + leafNodeEntry.length + (leafNodeEntry.numberOfRIDs * sizeof(RID)), &newRid, sizeof(RID));
   leafNodeEntry.numberOfRIDs++;
   setLeafNodeEntry(page, leafNodeEntry, entryPos);
 }
@@ -951,7 +966,7 @@ void IndexManager::showLeafOffsetsAndLengths(void * page){
   LeafNodeEntry lEntry;
   for (unsigned i =0; i < lHeader.numOfEntries; i ++){
     lEntry = getLeafNodeEntry(page, i);
-    cout<< " E offset: "<<lEntry. offset<< " E length: "<< lEntry.length;
+    cout<< " E offset: "<<lEntry. offset<< " E length: "<< lEntry.length<< " E rids: "<<lEntry.numberOfRIDs;
   }
   cout<< endl;
 }
