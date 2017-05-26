@@ -810,35 +810,45 @@ void IndexManager::injectBefore(void * page, LeafNodeHeader &leafNodeHeader, con
 //used to inject in between a leaf node
 void IndexManager::injectBetween(void * page, unsigned position, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType){
     cout<<"getting put in position: "<<position<<endl;
-    LeafNodeEntry leafNodeEntry = getLeafNodeEntry(page, position);
+    LeafNodeEntry following = getLeafNodeEntry(page, position +1);
+    LeafNodeEntry original = getLeafNodeEntry(page, position);
+    cout<< "original off: "<< original.offset<< " following off: "<<following.offset<<endl;
+    //node to be inserted
+    LeafNodeEntry leafNodeEntry;
     leafNodeEntry.length = getKeySize(attrType, key);
-    unsigned destOffset = leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID);
-    unsigned sourceOffset = leafNodeHeader.freeSpaceOffset;
-    unsigned byteSize = 0;
+    leafNodeEntry.offset = original.offset - sizeof(RID) - leafNodeEntry.length;
+    leafNodeEntry.status = alive;
+    leafNodeEntry.numberOfRIDs = 1;
 
-  leafNodeEntry.status = alive;
-  leafNodeEntry.numberOfRIDs =1;
-  leafNodeEntry.length = getKeySize(attrType, key);
-  Attribute tempatt;
-  tempatt.type = attrType;
-  leafNodeEntry.offset = previous.offset - leafNodeEntry.length - sizeof(RID);
-  //update shifted entry offsets
-  for (unsigned i = position; i< leafNodeHeader.numOfEntries; i++){
-    following = getLeafNodeEntry(page, i);
-    following.offset += leafNodeEntry.length;
-    following.offset += sizeof(RID);
-    setLeafNodeEntry(page, following, i);
-  }
-  //shift following keys left
-  memcpy(page + leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID), page + leafNodeHeader.freeSpaceOffset, leafNodeHeader.freeSpaceOffset - previous.offset);
-  //shift following entries right
-  memcpy(page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * (position+ 1)), page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * position), sizeof(LeafNodeEntry) * (leafNodeHeader.numOfEntries - position));
-  //insert key and entry in opened space
-  setLeafKeyAndRidAtOffset(page, tempatt, key, rid, leafNodeEntry.offset, leafNodeEntry.length);
-  setLeafNodeEntry(page, leafNodeEntry, position);
-  leafNodeHeader.freeSpaceOffset -= leafNodeEntry.length - sizeof(RID);
-  leafNodeHeader.numOfEntries++;
-  setLeafNodeHeader(page, leafNodeHeader);
+    //update shifted entry offsets
+    LeafNodeEntry itr;
+    for (unsigned i = position +1 ; i< leafNodeHeader.numOfEntries; i++){
+      itr = getLeafNodeEntry(page, i);
+      itr.offset = itr.offset - leafNodeEntry.length - sizeof(RID);
+      cout<< i<< " new off: "<<itr.offset<<endl;
+      setLeafNodeEntry(page, itr, i);
+    }
+    // move data left
+    unsigned dest = leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID);
+    unsigned source = leafNodeHeader.freeSpaceOffset;
+    unsigned byteSize = original.offset - leafNodeHeader.freeSpaceOffset;
+    memcpy(page + dest, page + source, byteSize);
+    //move entries right
+    dest = sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry)* (position +2));
+    source = sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry)* (position +1));
+    byteSize = (leafNodeHeader.numOfEntries - (position +1)) * sizeof(LeafNodeEntry) ;
+    cout<< "moving "<< byteSize/sizeof(LeafNodeEntry)<< " entries \n";
+    memcpy(page + dest, page + source, byteSize);
+    //insert the new one
+    following = getLeafNodeEntry(page, position +1);
+    leafNodeEntry.offset = following.offset - leafNodeEntry.length - sizeof(RID);
+    memcpy(page + leafNodeEntry.offset, key, leafNodeEntry.length);
+    memcpy(page + leafNodeEntry.offset + leafNodeEntry.length, &rid, sizeof(RID));
+    leafNodeHeader.numOfEntries++;
+    setLeafNodeEntry(page, leafNodeEntry, position +1);
+    //update leaf header
+    leafNodeHeader.freeSpaceOffset = leafNodeHeader.freeSpaceOffset - leafNodeEntry.length - sizeof(RID);
+    setLeafNodeHeader(page, leafNodeHeader);
 
 }
 //used to insert at the end of a leaf node
