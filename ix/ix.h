@@ -27,6 +27,7 @@
 #define IX_TYPE_ERROR 13
 #define IX_KEY_DOES_NOT_EXIST 14
 #define IX_CONFLICTING_TYPES 15
+#define IX_SPLIT_FAILED 16
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
@@ -176,12 +177,14 @@ class IndexManager {
     //size helpers
     unsigned getSizeofLeafEntry(const void * key, AttrType attrType);
     unsigned getLeafFreeSpace(LeafNodeHeader leafNodeHeader);
+    unsigned getInternalFreeSpace(InternalNodeHeader internalNodeHeader);
 
     //treebalance helpers
-    unsigned splitLeafAtEntry(void * page, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
+    RC splitLeafAtEntry(void * page, unsigned pageNum, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
     void splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
-    unsigned pushUpSplitKey(void * page, MetaHeader &metaHeader, IXFileHandle ixfileHandle, void * key, unsigned leftChildPage, unsigned rightChildPage);
-    void fixPageOrder(void * left, void * right, void * parent, IXFileHandle &ixfileHandle);
+    RC pushUpSplitKey(unsigned pageNum, MetaHeader &metaHeader, IXFileHandle ixfileHandle, void * key, unsigned leftChildPage, unsigned rightChildPage);
+    void fixPageOrderSplit(MetaHeader &metaHeader, void * right, IXFileHandle &ixfileHandle);
+    void fixPageOrderSplitAndHeightIncrease(MetaHeader &metaHeader, void * right, IXFileHandle &ixfileHandle);
 
     //inserting to leaf helpers
     void injectBefore(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
