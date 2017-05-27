@@ -28,10 +28,11 @@
 #define IX_TYPE_ERROR 13
 #define IX_KEY_DOES_NOT_EXIST 14
 #define IX_CONFLICTING_TYPES 15
-#define IX_PRINT_LEAF_NODE_ERROR 16
-#define IX_PRINT_INTERNAL_NODE_ERROR 17
-#define IX_TREE_ERROR 18
-#define IX_TARGET_DOES_EXIST 19
+#define IX_SPLIT_FAILED 16
+#define IX_PRINT_LEAF_NODE_ERROR 17
+#define IX_PRINT_INTERNAL_NODE_ERROR 18
+#define IX_TREE_ERROR 19
+#define IX_TARGET_DOES_EXIST 20
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
@@ -61,8 +62,8 @@ typedef struct MetaNode {
 
 // IndexID
 typedef struct IndexId {
-    unsigned pageId;
-    unsigned entryId;
+    uint32_t pageId;
+    uint32_t entryId;
 } IndexId;
 
 // Meta
@@ -144,6 +145,7 @@ class IndexManager {
         ~IndexManager();
 
     private:
+    friend class IX_ScanIterator;
     //private node methods
     static IndexManager *_index_manager;
     PagedFileManager * pfm;
@@ -188,11 +190,14 @@ class IndexManager {
     //size helpers
     unsigned getSizeofLeafEntry(const void * key, AttrType attrType);
     unsigned getLeafFreeSpace(LeafNodeHeader leafNodeHeader);
+    unsigned getInternalFreeSpace(InternalNodeHeader internalNodeHeader);
 
     //treebalance helpers
-    unsigned splitLeafAtEntry(void * page, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
+    RC splitLeafAtEntry(void * page, unsigned pageNum, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
     void splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
-    void fixPageOrder(void * left, void * right, void * parent, IXFileHandle &ixfileHandle);
+    RC pushUpSplitKey(unsigned pageNum, MetaHeader &metaHeader, IXFileHandle ixfileHandle, void * key, unsigned leftChildPage, unsigned rightChildPage);
+    void fixPageOrderSplit(MetaHeader &metaHeader, void * right, IXFileHandle &ixfileHandle);
+    void fixPageOrderSplitAndHeightIncrease(MetaHeader &metaHeader, void * right, IXFileHandle &ixfileHandle);
 
     //inserting to leaf helpers
     void injectBefore(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
@@ -218,6 +223,46 @@ class IX_ScanIterator {
 
         // Terminate index scan
         RC close();
+
+        friend class IndexManager;
+
+      private:
+        IndexManager * im;
+
+        uint32_t currPage;
+        uint32_t currEntry;
+
+        uint32_t totalLeaves;
+        uint16_t totalEntry;
+
+        void * pageData;
+        const void * low;
+        const void * high;
+        bool lowInc;
+        bool highInc;
+        bool infiniteLow;
+        bool infiniteHigh;
+        bool allocatedPage;
+
+        IXFileHandle *ixfh;
+        vector<IndexId> skipList; //may have to be changed to leaf ids
+
+        RC scanInit(IXFileHandle &ixfH,
+                const Attribute &attr,
+                const void      *lowKey,
+                const void      *highKey,
+                bool  lowKeyInclusive,
+                bool  highKeyInclusive);
+
+        RC getNextEntry();
+        RC getNextPage();
+        RC handleMovedRecord(bool &status, const RID rid, void *data);
+        bool checkScanCondition();
+        RC checkScanCondition(bool &result, const RID rid);
+        bool checkScanCondition(int, CompOp, const void*);
+        bool checkScanCondition(float, CompOp, const void*);
+        bool checkScanCondition(char*, CompOp, const void*);
+
 };
 
 
