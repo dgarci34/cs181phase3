@@ -48,8 +48,8 @@ typedef enum{ alive = 0, dead } ixStatus;
 
 // IndexID
 typedef struct IndexId {
-    unsigned pageId;
-    unsigned entryId;
+    uint32_t pageId;
+    uint32_t entryId;
 } IndexId;
 
 // Meta
@@ -131,6 +131,7 @@ class IndexManager {
         ~IndexManager();
 
     private:
+    friend class IX_ScanIterator;
     //private node methods
     static IndexManager *_index_manager;
     PagedFileManager * pfm;
@@ -202,6 +203,46 @@ class IX_ScanIterator {
 
         // Terminate index scan
         RC close();
+
+        friend class IndexManager;
+
+      private:
+        IndexManager * im;
+
+        uint32_t currPage;
+        uint32_t currEntry;
+
+        uint32_t totalLeaves;
+        uint16_t totalEntry;
+
+        void * pageData;
+        const void * low;
+        const void * high;
+        bool lowInc;
+        bool highInc;
+        bool infiniteLow;
+        bool infiniteHigh;
+        bool allocatedPage;
+
+        IXFileHandle *ixfh;
+        vector<IndexId> skipList; //may have to be changed to leaf ids
+
+        RC scanInit(IXFileHandle &ixfH,
+                const Attribute &attr,
+                const void      *lowKey,
+                const void      *highKey,
+                bool  lowKeyInclusive,
+                bool  highKeyInclusive);
+
+        RC getNextEntry();
+        RC getNextPage();
+        RC handleMovedRecord(bool &status, const RID rid, void *data);
+        bool checkScanCondition();
+        RC checkScanCondition(bool &result, const RID rid);
+        bool checkScanCondition(int, CompOp, const void*);
+        bool checkScanCondition(float, CompOp, const void*);
+        bool checkScanCondition(char*, CompOp, const void*);
+
 };
 
 

@@ -361,7 +361,7 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
         bool        	highKeyInclusive,
         IX_ScanIterator &ix_ScanIterator)
 {
-    return -1;
+    return ix_ScanIterator.scanInit(ixfileHandle, attribute, lowKey, highKey, lowKeyInclusive, highKeyInclusive);
 }
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const{
@@ -387,6 +387,8 @@ IX_ScanIterator::IX_ScanIterator()
 
 IX_ScanIterator::~IX_ScanIterator()
 {
+  if (allocatedPage)
+    free(pageData);
 }
 
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
@@ -777,6 +779,7 @@ unsigned IndexManager::getLeafFreeSpace(LeafNodeHeader leafNodeHeader){
 }
 //splits the page into two from the leaf node at the midpoint and returns the page of the right split node
 unsigned IndexManager::splitLeafAtEntry(void * page, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint){
+    cout<< "spliting node\n";
     return -1;
 }
 //splits an internal node at the midpoint
@@ -969,4 +972,59 @@ void IndexManager::showLeafOffsetsAndLengths(void * page){
     cout<< " E offset: "<<lEntry. offset<< " E length: "<< lEntry.length<< " E rids: "<<lEntry.numberOfRIDs;
   }
   cout<< endl;
+}
+//************************************scan helpers
+//used to initialize a scan iterator
+RC IX_ScanIterator::scanInit(IXFileHandle &ixfH,
+        const Attribute &attr,
+        const void      *lowKey,
+        const void      *highKey,
+        bool  lowKeyInclusive,
+        bool  highKeyInclusive)
+{
+  cout<<"initializing ix iterator\n";
+  //start at the first leaf first entry;
+  currPage = INITIAL_PAGE;
+  currEntry = FIRST_ENTRY;
+  totalLeaves =0;
+  totalEntry =0;
+  //buffer for the current pageNum
+  pageData = malloc(PAGE_SIZE);
+  allocatedPage = true;
+
+  //store variables passed into
+  ixfh = &ixfH;
+  low = lowKey;
+  //check for unconditional scans
+  if (lowKey == NULL)
+    infiniteLow = true;
+  if (highKey == NULL)
+    infiniteHigh = true;
+  high = highKey;
+  lowInc = lowKeyInclusive;
+  highInc = highKeyInclusive;
+
+  skipList.clear();
+
+  //use metahaeder to get the total number of leaves
+  if (!ixfh->getNumberOfPages()){
+    cout<< "no pages\n";
+    return SUCCESS;
+  }
+  ixfh->readPage(META_PAGE, pageData);
+  MetaHeader mHeader = im->getMetaHeader(pageData);
+  totalLeaves = mHeader.numOfLeafNodes;
+  cout<< "total leaves: "<<totalLeaves<<endl;
+  if(totalLeaves > 0){
+    if(ixfh->readPage(INITIAL_PAGE, pageData))
+      return IX_READ_FAILED;
+  }
+  else
+    return SUCCESS;
+  cout<< "have page in scan\n";
+  //get number of entries in the initial page
+  LeafNodeHeader lHeader = im->getLeafNodeHeader(pageData);
+  totalEntry = lHeader.numOfEntries;
+
+  return SUCCESS;
 }
