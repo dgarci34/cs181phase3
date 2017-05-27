@@ -180,6 +180,7 @@ class IndexManager {
     //treebalance helpers
     unsigned splitLeafAtEntry(void * page, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
     void splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
+    unsigned pushUpSplitKey(void * page, MetaHeader &metaHeader, IXFileHandle ixfileHandle, void * key, unsigned leftChildPage, unsigned rightChildPage);
     void fixPageOrder(void * left, void * right, void * parent, IXFileHandle &ixfileHandle);
 
     //inserting to leaf helpers

@@ -780,6 +780,45 @@ unsigned IndexManager::getLeafFreeSpace(LeafNodeHeader leafNodeHeader){
 //splits the page into two from the leaf node at the midpoint and returns the page of the right split node
 unsigned IndexManager::splitLeafAtEntry(void * page, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint){
     cout<< "spliting node\n";
+    LeafNodeEntry midEntry = getLeafNodeEntry(page, midpoint);
+    void * splitKey = malloc(midEntry.length);
+    void * newRightPage = malloc(PAGE_SIZE);
+    void * temp;                  //used for memcpy saftey
+    LeafNodeHeader newRightHeader;
+    getKeyAtOffset(page, splitKey, midEntry.offset, midEntry.length);
+    //copy higher entry data into right page
+    memcpy(newRightPage, page, PAGE_SIZE);
+
+    //shift right page data right
+    unsigned dest = (PAGE_SIZE - midEntry.offset) + leafNodeHeader.freeSpaceOffset;
+    unsigned src =  leafNodeHeader.freeSpaceOffset;
+    unsigned byteSize = midEntry.offset - leafNodeHeader.freeSpaceOffset;
+    temp = malloc(byteSize);
+    memcpy(temp, page + src, byteSize);
+    memcpy(newRightPage + dest, temp, byteSize);
+    free(temp);
+    //change left's header's free space offset and number of entries to manipulate size
+    LeafNodeEntry itr;
+    for (unsigned i = midpoint +1; i <leafNodeHeader.numOfEntries; i++){
+      itr = getLeafNodeEntry(newRightPage, i);
+      itr.offset = itr.offset + PAGE_SIZE - midEntry.offset;
+      setLeafNodeEntry(newRightPage, itr, i);
+    }
+    //shift entries left
+    dest = sizeof(leafNodeHeader);
+    src = sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * (midpoint +1));
+    byteSize = sizeof(LeafNodeEntry) *(leafNodeHeader.numOfEntries - midpoint -1);
+    temp = malloc(byteSize);
+    memcpy(temp, newRightPage + src, byteSize);
+    memcpy(page+ dest, temp, byteSize);
+
+    //make a new leaf header for the right child
+
+    //setpage siblings here
+  //  newRightHeader.numOfEntries = leafNodeHeader.numOfEntries -
+
+    free(newRightPage);
+    free(splitKey);
     return -1;
 }
 //splits an internal node at the midpoint
@@ -1025,6 +1064,5 @@ RC IX_ScanIterator::scanInit(IXFileHandle &ixfH,
   //get number of entries in the initial page
   LeafNodeHeader lHeader = im->getLeafNodeHeader(pageData);
   totalEntry = lHeader.numOfEntries;
-
   return SUCCESS;
 }
