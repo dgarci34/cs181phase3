@@ -409,15 +409,23 @@ void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attri
         currHeight = mNode.height;
         currPageNum = mNode.pageNum;
 
-        // print Leaf Node
+        if (currHeight > treeHeight)
+        {
+            cout << "***** ERROR: the height of node is greater than the maximum tree height *****" << endl;
+            return;
+        }
+
+        // print Leaf Node if it is a Leaf Node
         if (currHeight == treeHeight)
         {
             ixfileHandle.fhPrintLeafNode(tempFileHandle, currHeight, currPageNum, type, &pageNumStack);
         }
 
-        // TBC
-        // print Internal Node
-
+        // print Internal Node if it is a Internal Node
+        if (currHeight < treeHeight)
+        {
+            ixfileHandle.fhPrintInternalNode(tempFileHandle, currHeight, currPageNum, type, &pageNumStack);
+        }
 
         // print the symbol for formating the JSON string
         if (!pageNumStack.empty())
@@ -432,9 +440,12 @@ void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attri
             else if (nextHeight < currHeight)
                 cout << "\n" << string((currHeight - 1), '\t') << "]}\n";
         }
-        // print is finished, close the JSON
+        // print "]}" close the JSON
         else
-            cout << "\n]}";
+        {
+            for (unsigned i = currHeight; i > 0; i--)
+                cout << string((currHeight -1), '\t') << "]}\n";
+        }
 
         // update the info
         prevHeight = currHeight;
@@ -632,7 +643,6 @@ RC IXFileHandle::fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, uns
     RID rid;
     unsigned ridOffset;
     unsigned k;
-    MetaNode nextNode;
 
     cout << string(height, '\t') << "{\"keys\":[";
     // print each key and corresponding RIDs in the leaf node
@@ -688,7 +698,6 @@ RC IXFileHandle::fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, uns
                 memcpy(rawKey, (page + lNodeEntry.offset + sizeof(int)), keyLength);
                 charKey = (char *) rawKey;
                 strKey = charKey;
-
                 cout << "\"" << strKey << ":[";
 
                 // print RIDs
@@ -729,6 +738,106 @@ RC IXFileHandle::fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, uns
     cout << '\n';
 
     return SUCCESS;
+}
+
+RC IXFileHandle::fhPrintInternalNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> * pageNumStack)
+{
+    InternalNodeHeader iNodeHeader;
+    InternalNodeEntry iNodeEntry;
+
+    void * page = malloc(PAGE_SIZE);
+    ixfileHandle.readPage(pageNum, page);
+
+    iNodeHeader = ixfileHandle.fhGetInternalNodeHeader(page);
+
+    // entries should be >= 0
+    if (iNodeHeader.numOfEntries < 0)
+    {
+        free(page);
+        return IX_READ_FAILED;
+    }
+
+    int iKey;
+    float rKey;
+    void * rawKey;
+    char * charKey;
+    string strKey;
+    unsigned keyLength;
+    unsigned childrenPageNumArr[iNodeHeader.numOfEntries + 1];
+    MetaNode mNode;
+
+    RID rid;
+    unsigned ridOffset;
+
+    cout << string(height, '\t') << "{\"keys\":[";
+
+    // print keys
+    for (unsigned i = 0; i < iNodeHeader.numOfEntries; i++)
+    {
+        iNodeEntry = ixfileHandle.fhGetInternalNodeEntry(page, i);
+
+        switch (type)
+        {
+            case TypeInt:
+            {
+                // print key
+                memcpy(&iKey, (page + iNodeEntry.offset), sizeof(int));
+                cout << iKey;
+                break;
+            }
+
+            case TypeReal:
+            {
+                // print key
+                memcpy(&rKey, (page + iNodeEntry.offset), sizeof(float));
+                cout << rKey;
+                break;
+            }
+
+            case TypeVarChar:
+            {
+                // print key
+                memcpy(&keyLength, (page + iNodeEntry.offset), sizeof(int));
+                rawKey = malloc(keyLength);
+                memcpy(rawKey, (page + iNodeEntry.offset + sizeof(int)), keyLength);
+                charKey = (char *) rawKey;
+                strKey = charKey;
+                cout << "\"" << strKey << "\"";
+                break;
+            }
+
+            default:
+            {
+                free(page);
+                return IX_TYPE_ERROR;
+            }
+        }
+
+        if (i < (iNodeHeader.numOfEntries -1))
+            cout << ",";
+
+        // store the page number of each child
+        // push them to stack afterward
+        childrenPageNumArr[i] = iNodeEntry.leftChild;
+    }
+
+    // store last child (right child of the last entry in node)
+    childrenPageNumArr[iNodeHeader.numOfEntries] = iNodeEntry.rightChild;
+
+    // push the page number of childern to stack
+    // in reversed order (the most right child pushed first)
+    // so the most left child would be at the top of the stack
+    for (unsigned k = iNodeHeader.numOfEntries; k >= 0; k--)
+    {
+        setMetaNode(&mNode, childrenPageNumArr[k], (height + 1));
+        pageNumStack->push(mNode);
+    }
+
+    cout << "],\n";
+    cout << "\n" << string(height, '\t') << "\"children\":[\n";
+
+    return SUCCESS;
+// jump -- tbd
 }
 
 

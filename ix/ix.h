@@ -28,6 +28,8 @@
 #define IX_TYPE_ERROR 13
 #define IX_KEY_DOES_NOT_EXIST 14
 #define IX_CONFLICTING_TYPES 15
+#define IX_PRINT_LEAF_NODE_ERROR 16
+#define IX_PRINT_INTERNAL_NODE_ERROR 17
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
@@ -242,6 +244,7 @@ class IXFileHandle {
     void setMetaNode(MetaNode * mNodeEntry, unsigned pageNum, unsigned height);
 
     RC fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> * pageNumStack);
+    RC fhPrintInternalNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> * pageNumStack);
 
     // Constructor
     IXFileHandle();
