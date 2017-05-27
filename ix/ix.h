@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <stack>
 
 #include "../rbf/rbfm.h"
 
@@ -45,6 +46,14 @@ class IX_ScanIterator;
 class IXFileHandle;
 
 typedef enum{ alive = 0, dead } ixStatus;
+
+// MetaNode
+// used for printBTree()
+// store the necssary information to print B+ tree
+typedef struct MetaNode {
+    unsigned pageNum;
+    unsigned height;
+} MetaNode;
 
 // IndexID
 typedef struct IndexId {
@@ -217,11 +226,23 @@ class IXFileHandle {
     unsigned ixWritePageCounter;
     unsigned ixAppendPageCounter;
 
+    // helper functions
     RC writePage(PageNum pageNum, void * data);
     RC readPage(PageNum pageNum, void * data);
     RC appendPage(void * data);
 
     unsigned getNumberOfPages();
+
+    MetaHeader fhGetMetaHeader(void * page);
+    LeafNodeHeader fhGetLeafNodeHeader(void * page);
+    InternalNodeHeader fhGetInternalNodeHeader(void * page);
+    LeafNodeEntry fhGetLeafNodeEntry(void * page, unsigned slotNumber);
+    InternalNodeEntry fhGetInternalNodeEntry(void * page, unsigned slotNumber);
+    RID getRid(void * page, unsigned offset);
+    void setMetaNode(MetaNode * mNodeEntry, unsigned pageNum, unsigned height);
+
+    RC fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> * pageNumStack);
+
     // Constructor
     IXFileHandle();
 

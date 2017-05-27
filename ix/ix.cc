@@ -365,20 +365,83 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
 }
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const{
-  //there must be a tree
-  if (!ixfileHandle.getNumberOfPages())
-    return;
-  cout<< "----------------BTREE " <<ixfileHandle.fileName<< "--------------------- \n\n";
-  MetaHeader mHeader;
-  memcpy(&mHeader, ixfileHandle._file, sizeof(MetaHeader));
-/*  void * pageData = malloc(PAGE_SIZE);
-  ixfileHandle.readPage(META_PAGE, pageData);
-  MetaHeader mHeader;
-  IXFileHandle *ix = &ixfileHandle;
-  mHeader = ix->getMetaHeader(pageData);
+    IXFileHandle tempFileHandle = ixfileHandle;
 
-  //get meta
-  free(pageData);*/
+    //there must be a tree
+    if (!ixfileHandle.getNumberOfPages())
+        return;
+    cout<< "----------------BTREE " <<ixfileHandle.fileName<< "--------------------- \n\n";
+
+    void * page = malloc(PAGE_SIZE);
+
+    MetaHeader mHeader;
+    AttrType type;
+    unsigned treeHeight;
+    unsigned currHeight;
+    unsigned prevHeight;
+
+    MetaNode mNode;
+    stack<MetaNode> pageNumStack;
+    unsigned currPageNum;
+    unsigned leftChildPageNum;
+    unsigned rightChildPageNum;
+
+    // find root page
+    if (tempFileHandle.readPage(META_PAGE, page))
+        return;
+
+    mHeader = tempFileHandle.fhGetMetaHeader(page);
+    type = mHeader.type;
+    treeHeight = mHeader.height;
+    currHeight = 0;
+    prevHeight = 0;
+
+    // push the page number of root to stack
+    tempFileHandle.setMetaNode(&mNode, mHeader.rootPage, 0);
+    pageNumStack.push(mNode);
+
+    // print tree (More than one node)
+    while (!pageNumStack.empty())
+    {
+        // get the top MetaNode on stack
+        mNode = pageNumStack.top();
+        pageNumStack.pop();
+        currHeight = mNode.height;
+        currPageNum = mNode.pageNum;
+
+        // print Leaf Node
+        if (currHeight == treeHeight)
+        {
+            ixfileHandle.fhPrintLeafNode(tempFileHandle, currHeight, currPageNum, type, &pageNumStack);
+        }
+
+        // TBC
+        // print Internal Node
+
+
+        // print the symbol for formating the JSON string
+        if (!pageNumStack.empty())
+        {
+            unsigned nextHeight = (pageNumStack.top()).height;
+
+            // next node has the same height
+            // this implies that next node has the same parent as the current node
+            if (nextHeight == currHeight)
+                cout << ",\n";
+            // all the children belongs to the current node parent has been printed
+            else if (nextHeight < currHeight)
+                cout << "\n" << string((currHeight - 1), '\t') << "]}\n";
+        }
+        // print is finished, close the JSON
+        else
+            cout << "\n]}";
+
+        // update the info
+        prevHeight = currHeight;
+    }
+
+
+    free(page);
 }
 
 IX_ScanIterator::IX_ScanIterator()
@@ -492,6 +555,182 @@ RC IXFileHandle::appendPage(void * data)
     }
     return FH_WRITE_FAILED;
 }
+
+//returns the metaHeader from page 0
+MetaHeader IXFileHandle::fhGetMetaHeader(void * page)
+{
+    MetaHeader mHeader;
+    memcpy(&mHeader,page,sizeof(MetaHeader));
+    return mHeader;
+}
+
+//get leaf node header from passed in passed in page
+LeafNodeHeader IXFileHandle::fhGetLeafNodeHeader(void * page){
+    LeafNodeHeader lHeader;
+    memcpy(&lHeader, page, sizeof(LeafNodeHeader));
+    return lHeader;
+}
+
+//get InternalNodeHeader
+InternalNodeHeader IXFileHandle::fhGetInternalNodeHeader(void * page){
+    InternalNodeHeader iHeader;
+    memcpy(&iHeader, page, sizeof(InternalNodeHeader));
+    return iHeader;
+}
+
+//return a specific leaf node entry
+LeafNodeEntry IXFileHandle::fhGetLeafNodeEntry(void * page, unsigned slotNumber){
+    LeafNodeEntry lEntry;
+    memcpy(&lEntry, page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * slotNumber), sizeof(LeafNodeEntry));
+    return lEntry;
+}
+
+//return a specific Internal node entry
+InternalNodeEntry IXFileHandle::fhGetInternalNodeEntry(void * page, unsigned slotNumber){
+    InternalNodeEntry iEntry;
+    memcpy(&iEntry, page + sizeof(InternalNodeHeader) + (sizeof(InternalNodeEntry) * slotNumber), sizeof(InternalNodeEntry));
+    return iEntry;
+}
+
+RID IXFileHandle::getRid(void * page, unsigned offset)
+{
+    RID rid;
+    memcpy(&rid, (page + offset), sizeof(RID));
+    return rid;
+}
+
+void IXFileHandle::setMetaNode(MetaNode * mNodeEntry, unsigned pageNum, unsigned height)
+{
+    mNodeEntry->pageNum = pageNum;
+    mNodeEntry->height = height;
+}
+
+RC IXFileHandle::fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> * pageNumStack)
+{
+    LeafNodeHeader lNodeHeader;
+    LeafNodeEntry lNodeEntry;
+
+    void * page = malloc(PAGE_SIZE);
+    ixfileHandle.readPage(pageNum, page);
+
+    lNodeHeader = ixfileHandle.fhGetLeafNodeHeader(page);
+
+    // entries should be >= 0
+    if (lNodeHeader.numOfEntries < 0)
+    {
+        free(page);
+        return IX_READ_FAILED;
+    }
+
+    int iKey;
+    float rKey;
+    void * rawKey;
+    char * charKey;
+    string strKey;
+    unsigned keyLength;
+
+    RID rid;
+    unsigned ridOffset;
+    unsigned k;
+    MetaNode nextNode;
+
+    cout << string(height, '\t') << "{\"keys\":[";
+    // print each key and corresponding RIDs in the leaf node
+    for (unsigned i = 0; i < lNodeHeader.numOfEntries; i++)
+    {
+        lNodeEntry = ixfileHandle.fhGetLeafNodeEntry(page, i);
+
+        switch (type)
+        {
+            case TypeInt:
+            {
+                // print key
+                memcpy(&iKey, (page + lNodeEntry.offset), sizeof(int));
+                cout << "\"" << iKey << ":[";
+
+                // print RIDs
+                for (k = 0; k < lNodeEntry.numberOfRIDs; k++)
+                {
+                    ridOffset = lNodeEntry.offset + sizeof(int) + (k * sizeof(RID));
+                    rid = getRid(page, ridOffset);
+                    cout << "(" << rid.pageNum << "," << rid.slotNum << ")";
+
+                    // print "," when it is not the last RID of key
+                    if (k < (lNodeEntry.numberOfRIDs - 1))
+                        cout << ",";
+                }
+                break;
+            }
+            case TypeReal:
+            {
+                // print key
+                memcpy(&rKey, (page + lNodeEntry.offset), sizeof(float));
+                cout << "\"" << rKey << ":[";
+
+                // print RIDs
+                for (k = 0; k < lNodeEntry.numberOfRIDs; k++)
+                {
+                    ridOffset = lNodeEntry.offset + sizeof(float) + (k * sizeof(RID));
+                    rid = getRid(page, ridOffset);
+                    cout << "(" << rid.pageNum << "," << rid.slotNum << ")";
+
+                    // print "," when it is not the last RID of key
+                    if (k < (lNodeEntry.numberOfRIDs - 1))
+                        cout << ",";
+                }
+                break;
+            }
+            case TypeVarChar:
+            {
+                // print key
+                memcpy(&keyLength, (page + lNodeEntry.offset), sizeof(int));
+                rawKey = malloc(keyLength);
+                memcpy(rawKey, (page + lNodeEntry.offset + sizeof(int)), keyLength);
+                charKey = (char *) rawKey;
+                strKey = charKey;
+
+                cout << "\"" << strKey << ":[";
+
+                // print RIDs
+                for (k = 0; k < lNodeEntry.numberOfRIDs; k++)
+                {
+                    ridOffset = lNodeEntry.offset + sizeof(int) + keyLength + (k * sizeof(RID));
+                    rid = getRid(page, ridOffset);
+                    cout << "(" << rid.pageNum << "," << rid.slotNum << ")";
+
+                    // print "," when it is not the last RID of key
+                    if (k < (lNodeEntry.numberOfRIDs - 1))
+                        cout << ",";
+                }
+
+                free(rawKey);
+                break;
+            }
+            default:
+            {
+                free(page);
+                return IX_TYPE_ERROR;
+            }
+        }
+
+        cout << "]\"";
+        if (i < (lNodeHeader.numOfEntries -1))
+            cout << ",";
+    }
+    cout << "]}";
+
+    if (!pageNumStack->empty())
+    {
+        // if next node on stack is leaf node
+        // print a ","
+        if ( (pageNumStack->top()).height == height)
+            cout << ",";
+    }
+    cout << '\n';
+
+    return SUCCESS;
+}
+
 
 // **************************** Helper Function ****************************
 bool IndexManager::fileExists(const string &fileName)
