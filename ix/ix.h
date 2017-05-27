@@ -30,6 +30,8 @@
 #define IX_CONFLICTING_TYPES 15
 #define IX_PRINT_LEAF_NODE_ERROR 16
 #define IX_PRINT_INTERNAL_NODE_ERROR 17
+#define IX_TREE_ERROR 18
+#define IX_TARGET_DOES_EXIST 19
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
@@ -196,6 +198,9 @@ class IndexManager {
     void injectBefore(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
     void injectBetween(void * page, unsigned position, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
     void injectAfter(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
+
+    RC searchLeafNode(IXFileHandle ixfileHandle, unsigned pageNum, AttrType type, const void * key, RID rid, IndexId * indexId);
+    unsigned getNextNodePageNum(IXFileHandle ixfileHandle,  unsigned pageNum, AttrType type, const void * key, RID rid);
 };
 
 

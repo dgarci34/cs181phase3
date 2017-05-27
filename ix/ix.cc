@@ -349,7 +349,51 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
-    return -1;
+    MetaHeader mHeader;
+    unsigned treeHeight;
+    unsigned pageNum;
+    AttrType type;
+
+    IndexId indexId;
+    unsigned nextNodePageNum;
+
+    void * page = malloc(PAGE_SIZE);
+
+    mHeader = getMetaHeader(page);
+    treeHeight = mHeader.height;
+    pageNum = mHeader.rootPage;
+    type = mHeader.type;
+
+    // the search key and the key in tree should match
+    if (type != attribute.type)
+        return IX_TYPE_ERROR;
+
+    // tree height must be >= 0
+    if (treeHeight < 0)
+        return IX_TREE_ERROR;
+
+    // only one node in tree
+    if (treeHeight == 0)
+    {
+        free(page);
+        if (searchLeafNode(ixfileHandle, pageNum, type, key, rid, &indexId))
+            return IX_TARGET_DOES_EXIST;
+        // tbc -- mcmcpy the record
+    }
+
+    // find the leaf node that store the search key
+    nextNodePageNum = pageNum;
+    for (unsigned i = 0; i < (treeHeight - 1); i++)
+    {
+        nextNodePageNum = getNextNodePageNum(ixfileHandle, nextNodePageNum, type, key, rid);
+    }
+
+    // find the target in LeafNode
+    if (searchLeafNode(ixfileHandle, nextNodePageNum, type, key, rid, &indexId))
+        return IX_TARGET_DOES_EXIST;
+    // tbc -- mcmcpy the record
+
+    return SUCCESS;
 }
 
 
@@ -837,7 +881,6 @@ RC IXFileHandle::fhPrintInternalNode(IXFileHandle ixfileHandle, unsigned height,
     cout << "\n" << string(height, '\t') << "\"children\":[\n";
 
     return SUCCESS;
-// jump -- tbd
 }
 
 
@@ -1317,4 +1360,202 @@ void IndexManager::showLeafOffsetsAndLengths(void * page){
     cout<< " E offset: "<<lEntry. offset<< " E length: "<< lEntry.length<< " E rids: "<<lEntry.numberOfRIDs;
   }
   cout<< endl;
+}
+
+RC IndexManager::searchLeafNode(IXFileHandle ixfileHandle, unsigned pageNum, AttrType type, const void * key, RID rid, IndexId * indexId)
+{
+    LeafNodeHeader lNodeHeader;
+    LeafNodeEntry lNodeEntry;
+
+    void * page = malloc(PAGE_SIZE);
+    ixfileHandle.readPage(pageNum, page);
+
+    lNodeHeader = getLeafNodeHeader(page);
+
+    // entries should be >= 0
+    if (lNodeHeader.numOfEntries < 0)
+    {
+        free(page);
+        return IX_READ_FAILED;
+    }
+
+    void * rawKey;
+    unsigned keyLength;
+    RID tempRid;
+    unsigned ridOffset;
+    unsigned k;
+
+    // find key
+    for (unsigned i = 0; i < lNodeHeader.numOfEntries; i++)
+    {
+        lNodeEntry = getLeafNodeEntry(page, i);
+
+        switch (type)
+        {
+            case TypeInt:
+            {
+                rawKey = malloc(sizeof(int));
+                memcpy(rawKey, (page + lNodeEntry.offset), sizeof(int));
+                if (compareInts(key, rawKey) == EQUAL_TO)
+                {
+                    // find RID
+                    for (k = 0; k < lNodeEntry.numberOfRIDs; i++)
+                    {
+                        ridOffset = lNodeEntry.offset + sizeof(int) + (k * sizeof(RID));
+                        tempRid = ixfileHandle.getRid(page, ridOffset);
+
+                        if (tempRid.pageNum == rid.pageNum && tempRid.slotNum == rid.slotNum)
+                        {
+                            indexId->pageId = pageNum;
+                            indexId->entryId = i;
+
+                            free(rawKey);
+                            free(page);
+                            return SUCCESS;
+                        }
+                    }
+                }
+                free(rawKey);
+                break;
+            }
+
+            case TypeReal:
+            {
+                rawKey = malloc(sizeof(float));
+                memcpy(rawKey, (page + lNodeEntry.offset), sizeof(float));
+                if (compareReals(key, rawKey) == EQUAL_TO)
+                {
+                    // find RID
+                    for (k = 0; k < lNodeEntry.numberOfRIDs; i++)
+                    {
+                        ridOffset = lNodeEntry.offset +  sizeof(float) + (k * sizeof(RID));
+                        rid = ixfileHandle.getRid(page, ridOffset);
+
+                        if (tempRid.pageNum == rid.pageNum && tempRid.slotNum == rid.slotNum)
+                        {
+                            indexId->pageId = pageNum;
+                            indexId->entryId = i;
+
+                            free(rawKey);
+                            free(page);
+                            return SUCCESS;
+                        }
+                    }
+                }
+                free(rawKey);
+                break;
+            }
+
+            case TypeVarChar:
+            {
+                memcpy(&keyLength, (page + lNodeEntry.offset), sizeof(int));
+                rawKey = malloc(keyLength);
+                memcpy(rawKey, (page + lNodeEntry.offset + sizeof(int)), keyLength);
+
+                if (compareVarChars(key, rawKey) == EQUAL_TO)
+                {
+                    for (k = 0; k < lNodeEntry.numberOfRIDs; i++)
+                    {
+                        ridOffset = lNodeEntry.offset + sizeof(int) + keyLength + (k * sizeof(RID));
+                        rid = ixfileHandle.getRid(page, ridOffset);
+
+                        if (tempRid.pageNum == rid.pageNum && tempRid.slotNum == rid.slotNum)
+                        {
+                            indexId->pageId = pageNum;
+                            indexId->entryId = i;
+
+                            free(rawKey);
+                            free(page);
+                            return SUCCESS;
+                        }
+                    }
+                }
+                free(rawKey);
+                break;
+            }
+
+            default:
+            {
+                free(page);
+                return IX_TYPE_ERROR;
+            }
+        }
+    }
+
+    free(page);
+    return IX_TARGET_DOES_EXIST;
+}
+
+unsigned IndexManager::getNextNodePageNum(IXFileHandle ixfileHandle,  unsigned pageNum, AttrType type, const void * key, RID rid)
+{
+    InternalNodeHeader iNodeHeader;
+    InternalNodeEntry iNodeEntry;
+
+    void * page = malloc(PAGE_SIZE);
+    ixfileHandle.readPage(pageNum, page);
+
+    iNodeHeader = getInternalNodeHeader(page);
+
+    void * rawKey;
+    unsigned keyLength;
+    RID tempRid;
+    unsigned ridOffset;
+    unsigned k;
+
+    // compare the keys in entry with search key
+    // find the proper child
+    for (unsigned i = 0; i < iNodeHeader.numOfEntries; i++)
+    {
+        iNodeEntry = getInternalNodeEntry(page, i);
+
+        switch (type)
+        {
+            case TypeInt:
+            {
+                rawKey = malloc(sizeof(int));
+                memcpy(rawKey, (page + iNodeEntry.offset), sizeof(int));
+                if (compareInts(key, rawKey) == GREATER_THAN)
+                {
+                    free(rawKey);
+                    return iNodeEntry.leftChild;
+                }
+                free(rawKey);
+                break;
+            }
+
+            case TypeReal:
+            {
+                rawKey = malloc(sizeof(float));
+                memcpy(rawKey, (page + iNodeEntry.offset), sizeof(float));
+                if (compareReals(key, rawKey) == GREATER_THAN)
+                {
+                    free(rawKey);
+                    return iNodeEntry.leftChild;
+                }
+                free(rawKey);
+                break;
+            }
+
+            case TypeVarChar:
+            {
+                memcpy(&keyLength, (page + iNodeEntry.offset), INT_SIZE);
+                rawKey = malloc(keyLength);
+                memcpy(rawKey, (page + iNodeEntry.offset + sizeof(int)), keyLength);
+
+                if (compareVarChars(key, rawKey) == GREATER_THAN)
+                {
+                    free(rawKey);
+                    return iNodeEntry.leftChild;
+                }
+                free(rawKey);
+                break;
+            }
+        }
+    }
+
+    free(page);
+
+    // when the search key the greatest
+    // the right most child would be the proper position
+    return iNodeEntry.rightChild;
 }
