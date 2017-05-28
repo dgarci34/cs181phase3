@@ -77,8 +77,8 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid){
     //if no file error
 //    cout<<"filename: "<<ixfileHandle.fileName<< " ";
-    printKey(key, attribute.type);
-	  cout<<endl;
+//    printKey(key, attribute.type);
+//	  cout<<endl;
     if (ixfileHandle.fileName == "")
       return IX_FILE_DN_EXIST;
     //if no pages yet beging new tree
@@ -1214,7 +1214,7 @@ RC IndexManager::splitLeafAtEntry(void * page, unsigned pageNum, MetaHeader &met
     unsigned originalFreeSpaceOffset = leafNodeHeader.freeSpaceOffset;
     LeafNodeHeader newRightHeader;
     getKeyAtOffset(page, splitKey, midEntry.offset, midEntry.length);
-    printKey(splitKey, metaHeader.type);
+//    printKey(splitKey, metaHeader.type);
 //    cout<< " <- spliting at this key\n";
 //    cout<< "mid point #, offset: "<< midpoint<< " "<<midEntry.offset<<endl;
     //copy higher entry data into right page
@@ -1273,7 +1273,7 @@ RC IndexManager::splitLeafAtEntry(void * page, unsigned pageNum, MetaHeader &met
         return IX_SPLIT_FAILED;
     }
     else{
-      cout<< "no parent to push up to\n";
+//      cout<< "no parent to push up to\n";
       leafNodeHeader.parentPage = leafNodeHeader.rightNode +1;
       newRightHeader. parentPage = leafNodeHeader.parentPage;
       setLeafNodeHeader(newRightPage, newRightHeader);
@@ -1322,7 +1322,7 @@ void IndexManager::fixPageOrderSplitAndHeightIncrease(MetaHeader & metaHeader, v
 //inserts key and children page numbers to internal node
 RC IndexManager::pushUpSplitKey(unsigned pageNum, MetaHeader &metaHeader, IXFileHandle ixfileHandle, void * key, AttrType attrType, unsigned leftChildPage, unsigned rightChildPage){
 //  cout<< "attempting to split at: ";
-  printKey(key, metaHeader.type);
+//  printKey(key, metaHeader.type);
 //  cout<< "to page: "<<pageNum<<endl;
   void * tempPage = malloc(PAGE_SIZE);
   ixfileHandle.readPage(pageNum, tempPage);

@@ -52,24 +52,28 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
     cerr << endl << "Before Insert - R W A: " << readPageCount << " " <<  writePageCount << " " << appendPageCount << endl;
 
     // insert entry
-    rc = indexManager->insertEntry(ixfileHandle, attribute, &key, rid);
-    assert(rc == success && "indexManager::insertEntry() should not fail.");
-	
+    for(uint32_t i =0; i< 10000; i++){
+      rc = indexManager->insertEntry(ixfileHandle, attribute, &i, rid);
+      assert(rc == success && "indexManager::insertEntry() should not fail.");
+    }
+
 //further testing
-//	rc = indexManager->insertEntry(ixfileHandle, attribute, &keySmall, rid);
-//    assert(rc == success && "indexManager::insertEntry() should not fail.");
- 
+/*	rc = indexManager->insertEntry(ixfileHandle, attribute, &keySmall, rid);
+    assert(rc == success && "indexManager::insertEntry() should not fail.");
+
 	rc = indexManager->insertEntry(ixfileHandle, attribute, &keyBig, rid);
     assert(rc == success && "indexManager::insertEntry() should not fail.");
-    
+
 	rc = indexManager->insertEntry(ixfileHandle, attribute, &keyMid, rid);
     assert(rc == success && "indexManager::insertEntry() should not fail.");
 
-//    rc = indexManager->insertEntry(ixfileHandle, attribute, &keySmall, rid);
-//    assert(rc == success && "indexManager::insertEntry() should not fail.");
+  rc = indexManager->insertEntry(ixfileHandle, attribute, &keySmall, rid);
+  assert(rc == success && "indexManager::insertEntry() should not fail.");*/
 
 
-	
+
+
+
     // collect counters
     rc = ixfileHandle.collectCounterValues(readPageCountAfter, writePageCountAfter, appendPageCountAfter);
     assert(rc == success && "indexManager::collectCounterValues() should not fail.");
@@ -86,7 +90,7 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
         cerr << "Insertion should generate some page I/O. The implementation is not correct." << endl;
         rc = indexManager->closeFile(ixfileHandle);
         return fail;
-    } 
+    }
 
     // print BTree, by this time the BTree should have only one node
     cerr << endl;
@@ -120,4 +124,3 @@ int main()
     }
 
 }
-
