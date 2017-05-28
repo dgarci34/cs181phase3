@@ -33,10 +33,13 @@
 #define IX_PRINT_INTERNAL_NODE_ERROR 18
 #define IX_TREE_ERROR 19
 #define IX_TARGET_DOES_EXIST 20
+#define IX_NOT_FOUND 21
+#define IX_SCAN_ERROR 22
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
 #define FIRST_ENTRY 0
+#define FIRST_RID 0
 #define INITIAL_HEIGHT 0
 #define META_PAGE 0
 #define INITIAL_PAGE 1
@@ -231,9 +234,12 @@ class IX_ScanIterator {
 
         uint32_t currPage;
         uint32_t currEntry;
+        uint32_t currRid;
 
         uint32_t totalLeaves;
         uint16_t totalEntry;
+
+        AttrType attrType;
 
         void * pageData;
         const void * low;
@@ -247,12 +253,15 @@ class IX_ScanIterator {
         IXFileHandle *ixfh;
         vector<IndexId> skipList; //may have to be changed to leaf ids
 
+        // helper functions
         RC scanInit(IXFileHandle &ixfH,
                 const Attribute &attr,
                 const void      *lowKey,
                 const void      *highKey,
                 bool  lowKeyInclusive,
                 bool  highKeyInclusive);
+
+        RC scanCurrPage(RID &rid, void *key);
 
         RC getNextEntry();
         RC getNextPage();

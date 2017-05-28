@@ -501,6 +501,7 @@ void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attri
 
 IX_ScanIterator::IX_ScanIterator()
 {
+    im = IndexManager::instance();
 }
 
 IX_ScanIterator::~IX_ScanIterator()
@@ -509,9 +510,47 @@ IX_ScanIterator::~IX_ScanIterator()
     free(pageData);
 }
 
+
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 {
-    return -1;
+    if (totalLeaves == 0)
+    {
+        cout << "No Leaf Page" << endl;
+        return IX_EOF;
+    }
+
+    LeafNodeHeader lNodeHeader;
+    LeafNodeEntry lNodeEntry;
+    RC rc;
+
+    ixfh->readPage(currPage, pageData);
+    lNodeHeader = im->getLeafNodeHeader(pageData);
+    totalEntry = lNodeHeader.numOfEntries;
+
+    // scan current node
+    rc = scanCurrPage(rid, key);
+
+    // scan until next entry is found or all entries are scanned
+    while (rc == IX_NOT_FOUND)
+    {
+        // prepare to scan next node
+        currPage = lNodeHeader.rightNode;
+        currEntry = FIRST_ENTRY;
+        currRid = FIRST_RID;
+
+        // check if all the node has been scaned
+        if (currPage == 0)
+            return IX_EOF;
+
+        ixfh->readPage(currPage, pageData);
+        lNodeHeader = im->getLeafNodeHeader(pageData);
+        totalEntry = lNodeHeader.numOfEntries;
+
+        // scan the new node
+        rc = scanCurrPage(rid, key);
+    }
+
+    return rc;
 }
 
 RC IX_ScanIterator::close()
@@ -1669,8 +1708,10 @@ RC IX_ScanIterator::scanInit(IXFileHandle &ixfH,
   //start at the first leaf first entry;
   currPage = INITIAL_PAGE;
   currEntry = FIRST_ENTRY;
+  currRid = FIRST_RID;
   totalLeaves =0;
   totalEntry =0;
+  attrType = attr.type;
   //buffer for the current pageNum
   pageData = malloc(PAGE_SIZE);
   allocatedPage = true;
@@ -1702,11 +1743,323 @@ RC IX_ScanIterator::scanInit(IXFileHandle &ixfH,
     if(ixfh->readPage(INITIAL_PAGE, pageData))
       return IX_READ_FAILED;
   }
-  else
-    return SUCCESS;
+//  else
+//    return SUCCESS; tbc -- why return SUCCESS here??
   cout<< "have page in scan\n";
   //get number of entries in the initial page
   LeafNodeHeader lHeader = im->getLeafNodeHeader(pageData);
   totalEntry = lHeader.numOfEntries;
+
   return SUCCESS;
+}
+
+RC IX_ScanIterator::scanCurrPage(RID &rid, void *key)
+{
+    LeafNodeEntry lNodeEntry;
+    void * tempKey;
+    unsigned keyLength;
+    bool isMatchedLowCondition;
+    bool isMatchedHighCondition;
+
+    isMatchedLowCondition = false;
+    isMatchedHighCondition = false;
+    int compareValue;
+    unsigned ridOffset;
+    unsigned numberOfRIDs;
+
+    switch (attrType)
+    {
+        case TypeInt:
+        {
+            while(currEntry < totalEntry)
+            {
+                // get key
+                lNodeEntry = im->getLeafNodeEntry(pageData, currEntry);
+
+                // check if the key is deleted
+                if (lNodeEntry.status == dead)
+                {
+                    currEntry += 1;
+                    continue;
+                }
+
+                // check if all the RIDs of the current entry are printed
+                numberOfRIDs = lNodeEntry.numberOfRIDs;
+                if (currRid >= numberOfRIDs)
+                {
+                    currRid = FIRST_RID;
+                    currEntry += 1;
+                    continue;
+                }
+
+                tempKey = malloc(sizeof(int));
+                memcpy(tempKey, (pageData + lNodeEntry.offset), sizeof(int));
+
+                // find if key low key conditions
+                if (infiniteLow)
+                {
+                    // no limitation on low key
+                    isMatchedLowCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareInts(tempKey, low);
+
+                    // find if key in entry is greater than the low key
+                    if (compareValue == GREATER_THAN)
+                        isMatchedLowCondition = true;
+                    else if (lowInc && compareValue == EQUAL_TO)
+                        isMatchedLowCondition = true;
+                    else
+                        isMatchedLowCondition = false;
+                }
+
+                // find if key high key conditions
+                if (infiniteHigh)
+                {
+                    // no limitation on high key
+                    isMatchedHighCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareInts(high, tempKey);
+
+                    // find if key in entry is less than the high key
+                    if (compareValue == GREATER_THAN)
+                        isMatchedHighCondition = true;
+                    else if (highInc && compareValue == EQUAL_TO)
+                        isMatchedHighCondition = true;
+                    else
+                    {
+                        // all the keys that have not been scan > high key
+                        free(tempKey);
+                        return IX_EOF;
+                    }
+                }
+
+                // found key that matched both low and high conditions
+                if (isMatchedLowCondition && isMatchedHighCondition)
+                {
+                    // set RID
+                    ridOffset = lNodeEntry.offset + (currRid * sizeof(RID));
+                    memcpy(&rid, pageData + ridOffset, sizeof(RID));
+
+                    // set key
+                    memcpy(key, tempKey, sizeof(int));
+
+                    // update the info
+                    currRid += 1;
+
+                    free(tempKey);
+                    return SUCCESS;
+                }
+
+                currRid = FIRST_RID;
+                currEntry += 1;
+            }
+
+            free(tempKey);
+            break;
+        }
+
+        case TypeReal:
+        {
+            while(currEntry < totalEntry)
+            {
+                // get key
+                lNodeEntry = im->getLeafNodeEntry(pageData, currEntry);
+
+                // check if the key is deleted
+                if (lNodeEntry.status == dead)
+                {
+                    currEntry += 1;
+                    continue;
+                }
+
+                // check if all the RIDs of the current entry are printed
+                numberOfRIDs = lNodeEntry.numberOfRIDs;
+                if (currRid >= numberOfRIDs)
+                {
+                    currRid = FIRST_RID;
+                    currEntry += 1;
+                    continue;
+                }
+
+                tempKey = malloc(sizeof(float));
+                memcpy(tempKey, (pageData + lNodeEntry.offset), sizeof(float));
+
+                // find if key low key conditions
+                if (infiniteLow)
+                {
+                    // no limitation on low key
+                    isMatchedLowCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareReals(tempKey, low);
+
+                    // find if key in entry is greater than the low key
+                    if (compareValue == GREATER_THAN)
+                        isMatchedLowCondition = true;
+                    else if (lowInc && compareValue == EQUAL_TO)
+                        isMatchedLowCondition = true;
+                    else
+                        isMatchedLowCondition = false;
+                }
+
+                // find if key high key conditions
+                if (infiniteHigh)
+                {
+                    // no limitation on high key
+                    isMatchedHighCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareReals(high, tempKey);
+
+                    // find if high key is greater than key in entry
+                    if (compareValue == GREATER_THAN)
+                        isMatchedHighCondition = true;
+                    else if (highInc && compareValue == EQUAL_TO)
+                        isMatchedHighCondition = true;
+                    else
+                    {
+                        // all the keys that have not been scan are greter than high key
+                        free(tempKey);
+                        return IX_EOF;
+                    }
+                }
+
+                // found key that matched both low and high conditions
+                if (isMatchedLowCondition && isMatchedHighCondition)
+                {
+                    // set RID
+                    ridOffset = lNodeEntry.offset + (currRid * sizeof(RID));
+                    memcpy(&rid, pageData + ridOffset, sizeof(RID));
+
+                    // set key
+                    memcpy(key, tempKey, sizeof(int));
+
+                    // update the info
+                    currRid += 1;
+
+                    free(tempKey);
+                    return SUCCESS;
+                }
+
+                // key in current entry is not matched
+                // go the the next entry
+                currRid = FIRST_RID;
+                currEntry += 1;
+            }
+
+            free(tempKey);
+            break;
+        }
+
+        case TypeVarChar:
+        {
+            while(currEntry < totalEntry)
+            {
+                // get key
+                lNodeEntry = im->getLeafNodeEntry(pageData, currEntry);
+
+                // check if the key is deleted
+                if (lNodeEntry.status == dead)
+                {
+                    currEntry += 1;
+                    continue;
+                }
+
+                // check if all the RIDs of the current entry are printed
+                numberOfRIDs = lNodeEntry.numberOfRIDs;
+                if (currRid >= numberOfRIDs)
+                {
+                    currRid = FIRST_RID;
+                    currEntry += 1;
+                    continue;
+                }
+
+                // read key from leaf node
+                memcpy(&keyLength, (pageData + lNodeEntry.offset), sizeof(int));
+
+                tempKey = malloc(keyLength);
+                memcpy(tempKey, (pageData + lNodeEntry.offset + sizeof(int)), keyLength);
+
+                // find if key low key conditions
+                if (infiniteLow)
+                {
+                    // no limitation on low key
+                    isMatchedLowCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareVarChars(tempKey, low);
+
+                    // find if key in entry is greater than the low key
+                    if (compareValue == GREATER_THAN)
+                        isMatchedLowCondition = true;
+                    else if (lowInc && compareValue == EQUAL_TO)
+                        isMatchedLowCondition = true;
+                    else
+                        isMatchedLowCondition = false;
+                }
+
+                // find if key high key conditions
+                if (infiniteHigh)
+                {
+                    // no limitation on high key
+                    isMatchedHighCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareVarChars(high, tempKey);
+
+                    // find if high key is greater than key in entry
+                    if (compareValue == GREATER_THAN)
+                        isMatchedHighCondition = true;
+                    else if (highInc && compareValue == EQUAL_TO)
+                        isMatchedHighCondition = true;
+                    else
+                    {
+                        // all the keys that have not been scan are greter than high key
+                        free(tempKey);
+                        return IX_EOF;
+                    }
+                }
+
+                // found key that matched both low and high conditions
+                if (isMatchedLowCondition && isMatchedHighCondition)
+                {
+                    // set RID
+                    ridOffset = lNodeEntry.offset + (currRid * sizeof(RID));
+                    memcpy(&rid, pageData + ridOffset, sizeof(RID));
+
+                    // set key
+                    memcpy(key, tempKey, keyLength);
+
+                    // update the info
+                    currRid += 1;
+
+                    free(tempKey);
+                    return SUCCESS;
+                }
+
+                // key in current entry is not matched
+                // go the the next entry
+                currRid = FIRST_RID;
+                currEntry += 1;
+            }
+
+            free(tempKey);
+            break;
+        }
+
+        default:
+            return IX_TYPE_ERROR;
+    }
+
+    // all keys in current leaf node is scanned
+    // and printed if they are between low and high key
+    return IX_NOT_FOUND;
 }
