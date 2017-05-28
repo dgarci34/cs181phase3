@@ -48,6 +48,9 @@
 #define EQUAL_TO 1
 #define GREATER_THAN 2
 
+#define FURTHER_SPLIT_NEEDED 0
+#define SPLIT_DONE 1
+
 using namespace std;
 
 class IX_ScanIterator;
@@ -83,6 +86,8 @@ typedef struct InternalNodeHeader {
     unsigned numOfEntries;
     unsigned freeSpaceOffset;
     unsigned parentPage;
+    unsigned height;
+    unsigned selfPage;
 } InternalNodeHeader;
 
 typedef struct InternalNodeEntry {
@@ -97,6 +102,7 @@ typedef struct LeafNodeHeader {
     unsigned numOfEntries;
     unsigned freeSpaceOffset;
     unsigned parentPage;
+    unsigned selfPage;
     unsigned leftNode;
     unsigned rightNode;
 } LeafNodeHeader;
@@ -151,6 +157,7 @@ class IndexManager {
     friend class IX_ScanIterator;
     //private node methods
     static IndexManager *_index_manager;
+    unsigned workingHeight;
     PagedFileManager * pfm;
     bool pfmPtr;
 
@@ -161,6 +168,9 @@ class IndexManager {
     void printRids(void * page, LeafNodeEntry leafNodeEntry);
     void showLeaf(void * page, AttrType attrType);
     void showLeafOffsetsAndLengths(void * page);
+    void showInternalKeysAndChildren(void * page, AttrType attrType);
+    void showInternalStatistics(void * page);
+    void showMetaHeaderStatistics(void * page);
     unsigned getKeySize(AttrType att, const void* key);
     RC search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexId * indexId);
 
@@ -196,16 +206,23 @@ class IndexManager {
     unsigned getInternalFreeSpace(InternalNodeHeader internalNodeHeader);
 
     //treebalance helpers
-    RC splitLeafAtEntry(void * page, unsigned pageNum, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
-    void splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
-    RC pushUpSplitKey(unsigned pageNum, MetaHeader &metaHeader, IXFileHandle ixfileHandle, void * key, unsigned leftChildPage, unsigned rightChildPage);
+    RC splitLeafAtEntry(void * page, unsigned pageNum, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint, AttrType attrType);
+    RC splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint);
+    RC pushUpSplitKey(unsigned pageNum, MetaHeader &metaHeader, IXFileHandle ixfileHandle, void * key, AttrType attrType, unsigned leftChildPage, unsigned rightChildPage);
     void fixPageOrderSplit(MetaHeader &metaHeader, void * right, IXFileHandle &ixfileHandle);
     void fixPageOrderSplitAndHeightIncrease(MetaHeader &metaHeader, void * right, IXFileHandle &ixfileHandle);
+    void fixParentPointersOnLeaf(void * page, IXFileHandle &ixfileHandle);
+    void fixParentPointersOnInternal(void * page, IXFileHandle &ixfileHandle);
 
     //inserting to leaf helpers
     void injectBefore(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
     void injectBetween(void * page, unsigned position, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
     void injectAfter(void * page, LeafNodeHeader &leafNodeHeader, const void * key, RID rid, AttrType attrType);
+
+    //inserting to internal helpers
+    void injectInternalBefore(void * page, InternalNodeHeader &internalNodeHeader, const void * key, AttrType attrType, unsigned leftChild, unsigned rightChild);
+    void injectInternalBetween(void * page, unsigned position, InternalNodeHeader &internalNodeHeader, const void * key, AttrType attrType, unsigned leftChild, unsigned rightChild);
+    void injectInternalAfter(void * page, InternalNodeHeader &internalNodeHeader, const void * key, AttrType attrType, unsigned leftChild, unsigned rightChild);
 
     RC searchLeafNode(IXFileHandle ixfileHandle, unsigned pageNum, AttrType type, const void * key, RID rid, IndexId * indexId);
     unsigned getNextNodePageNum(IXFileHandle ixfileHandle,  unsigned pageNum, AttrType type, const void * key, RID rid);
