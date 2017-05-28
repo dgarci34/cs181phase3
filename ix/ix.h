@@ -320,7 +320,7 @@ class IXFileHandle {
     void setMetaNode(MetaNode * mNodeEntry, unsigned pageNum, unsigned height);
 
     RC fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> * pageNumStack);
-    RC fhPrintInternalNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> * pageNumStack);
+    RC fhPrintInternalNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> &pageNumStack);
 
     // Constructor
     IXFileHandle();

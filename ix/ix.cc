@@ -463,7 +463,7 @@ void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attri
         // print Internal Node if it is a Internal Node
         if (currHeight < treeHeight)
         {
-            ixfileHandle.fhPrintInternalNode(tempFileHandle, currHeight, currPageNum, type, &pageNumStack);
+            ixfileHandle.fhPrintInternalNode(tempFileHandle, currHeight, currPageNum, type, pageNumStack);
         }
 
         // print the symbol for formating the JSON string
@@ -820,7 +820,7 @@ RC IXFileHandle::fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, uns
     return SUCCESS;
 }
 
-RC IXFileHandle::fhPrintInternalNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> * pageNumStack)
+RC IXFileHandle::fhPrintInternalNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> &pageNumStack)
 {
     InternalNodeHeader iNodeHeader;
     InternalNodeEntry iNodeEntry;
@@ -907,10 +907,10 @@ RC IXFileHandle::fhPrintInternalNode(IXFileHandle ixfileHandle, unsigned height,
     // push the page number of childern to stack
     // in reversed order (the most right child pushed first)
     // so the most left child would be at the top of the stack
-    for (unsigned k = iNodeHeader.numOfEntries; k >= 0; k--)
+    for (int k = iNodeHeader.numOfEntries; k >= 0; k--)
     {
         setMetaNode(&mNode, childrenPageNumArr[k], (height + 1));
-        pageNumStack->push(mNode);
+        pageNumStack.push(mNode);
     }
 
     cout << "],\n";
