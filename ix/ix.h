@@ -86,6 +86,7 @@ typedef struct LeafNodeHeader {
     unsigned numOfEntries;
     unsigned freeSpaceOffset;
     unsigned parentPage;
+    unsigned selfPage;
     unsigned leftNode;
     unsigned rightNode;
 } LeafNodeHeader;
@@ -153,6 +154,7 @@ class IndexManager {
     void showLeafOffsetsAndLengths(void * page);
     void showInternalKeysAndChildren(void * page, AttrType attrType);
     void showInternalStatistics(void * page);
+    void showMetaHeaderStatistics(void * page);
     unsigned getKeySize(AttrType att, const void* key);
     RC search(IXFileHandle &ixfileHandle, void *key, FILE * pfile, IndexId * indexId);
 

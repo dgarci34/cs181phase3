@@ -77,13 +77,11 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid){
     //if no file error
 //    cout<<"filename: "<<ixfileHandle.fileName<< " ";
-//    printKey(key, attribute.type);
-//	cout<<endl;
+    printKey(key, attribute.type);
+	  cout<<endl;
     if (ixfileHandle.fileName == "")
       return IX_FILE_DN_EXIST;
-//    printKey(key, attribute.type);
     //if no pages yet beging new tree
-//    cout<<"pages: "<<ixfileHandle.getNumberOfPages()<<endl;
     if (!ixfileHandle.getNumberOfPages())
       initializeBTree(ixfileHandle, attribute.type);
     //get meta header
@@ -93,9 +91,9 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     MetaHeader mHeader = getMetaHeader(pageData);
     if (mHeader.type != attribute.type)
       return IX_CONFLICTING_TYPES;
-//    cout<<"meta header check: "<<mHeader.height<<" root: "<<mHeader.rootPage<< " leafs "<< mHeader.numOfLeafNodes<<endl;
 
     //begin at the root
+//    cout<< "root is at: "<<mHeader.rootPage<<endl;
     ixfileHandle.readPage(mHeader.rootPage, pageData);
     unsigned childPageNum = INITIAL_PAGE;
     bool childFound = false;
@@ -104,11 +102,12 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     InternalNodeHeader iHeader;
     InternalNodeEntry iEntry;
     void * keyInMemory;                 //key you extract and compare to
-    for (unsigned i =0; i < mHeader.height; i--){
-      cout<< "iterating through height\n";
+    for (unsigned i =mHeader.height; i > 0; i--){
+//      cout<< "iterating through height "<< i<<endl;
       iHeader = getInternalNodeHeader(pageData);
       //compare through internal node values
-      for (unsigned j =0; j < iHeader.numOfEntries; j++){
+      for (unsigned j = 0; j < iHeader.numOfEntries; j++){
+//        cout<< "comparing entries\n";
         iEntry = getInternalNodeEntry(pageData, j);
         //compare based on type
         switch (attribute.type) {
@@ -120,14 +119,13 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             if (compare == LESS_THAN || compare == EQUAL_TO){
               childPageNum = iEntry.leftChild;
               childFound = true;
-              free(keyInMemory);
             }
             //if greater than and at the last follow rightchild
             else if(j == iHeader.numOfEntries -1){
               childPageNum = iEntry.rightChild;
               childFound = true;
-              free(keyInMemory);
             }
+            free(keyInMemory);
             break;
           }
           case TypeReal:
@@ -138,14 +136,13 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             if (compare == LESS_THAN|| compare == EQUAL_TO){
               childPageNum = iEntry.leftChild;
               childFound = true;
-              free(keyInMemory);
             }
             //if greater than and at the last follow rightchild
             else if(j == iHeader.numOfEntries -1){
               childPageNum = iEntry.rightChild;
               childFound = true;
-              free(keyInMemory);
             }
+            free(keyInMemory);
             break;
           }
           case TypeVarChar:
@@ -156,14 +153,13 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             if (compare == LESS_THAN || compare == EQUAL_TO){
               childPageNum = iEntry.leftChild;
               childFound = true;
-              free(keyInMemory);
             }
             //if greater than and at the last follow rightchild
             else if(j == iHeader.numOfEntries -1){
               childPageNum = iEntry.rightChild;
               childFound = true;
-              free(keyInMemory);
             }
+            free(keyInMemory);
             break;
           }
         }
@@ -185,9 +181,12 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     unsigned freeSpaceOnPage = getLeafFreeSpace(lHeader);
 //    cout<<"freespace = "<< freeSpaceOnPage<< " potentialSize = "<< potentialSize<<endl;
     if (potentialSize > freeSpaceOnPage){
-        cout<< "size exceeds free space\n";
+//        cout<< "size exceeds free space\n";
         unsigned midpoint = lHeader.numOfEntries / 2;
-        unsigned rightSplit = splitLeafAtEntry(pageData, childPageNum, mHeader, lHeader, ixfileHandle, midpoint, attribute.type);
+        if(splitLeafAtEntry(pageData, childPageNum, mHeader, lHeader, ixfileHandle, midpoint, attribute.type))
+          return IX_SPLIT_FAILED;
+        unsigned rightSplit = lHeader.rightNode;
+//        cout<< "split done now fitting into self: "<<lHeader.selfPage <<" or right: "<<rightSplit<<endl;
         lEntry = getLeafNodeEntry(pageData, midpoint);
         void * midKey = malloc(lEntry.length);
         getKeyAtOffset(pageData, midKey, lEntry.offset, lEntry.length);
@@ -249,10 +248,6 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         lEntry = getLeafNodeEntry(pageData, i);
         currentKey = malloc(lEntry.length);
         getKeyAtOffset(pageData, currentKey, lEntry.offset, lEntry.length);
-//        printKey(key, attribute.type);
-//        cout<< " is being compare to ";
-//        printKey(currentKey, attribute.type);
-//        cout<<endl;
         switch (attribute.type) {
             case TypeInt:
             {
@@ -301,12 +296,11 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
                 break;
             }
         }
+        free(currentKey);
         if (spotFound || addedRID){
-            free(currentKey);
             break;
           }
         if(i == lHeader.numOfEntries -1){ //will have to be added to end of page
-            free(currentKey);
             spot = lHeader.numOfEntries;
         }
     }
@@ -334,17 +328,17 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     if(ixfileHandle.writePage(childPageNum,pageData))
       return IX_WRITE_FAILED;
   free(pageData);
-	cout<< "check\n";
+//	cout<< "check---------------------------------------------\n";
   void * checkPage = malloc(PAGE_SIZE);
-	ixfileHandle.readPage(1, checkPage);
-	LeafNodeHeader hCheck = getLeafNodeHeader(checkPage);
-	showLeaf(checkPage, attribute.type);
-  cout<< "size left: "<< getLeafFreeSpace(hCheck)<<endl;
-//  showLeafOffsetsAndLengths(checkPage);
-//  cout<< "pre free\n";
+	ixfileHandle.readPage(mHeader.rootPage, checkPage);
+	InternalNodeHeader hCheck = getInternalNodeHeader(checkPage);
+//	showInternalKeysAndChildren(checkPage, attribute.type);
+//  cout<< "free space: "<< getInternalFreeSpace(hCheck)<<endl;
+  ixfileHandle.readPage(META_PAGE, checkPage);
+//  showMetaHeaderStatistics(checkPage);
   free(checkPage);
-//  cout<< "post free\n";
   return SUCCESS;
+
 }
 
 
@@ -635,6 +629,7 @@ void IndexManager::initializeBTree(IXFileHandle ixfileHandle, AttrType attrType)
     lHeader.parentPage = NO_PAGE;         //pointer pages are invalid at the begining
     lHeader.leftNode = NO_PAGE;
     lHeader.rightNode = NO_PAGE;
+    lHeader.selfPage = INITIAL_PAGE;
     lHeader.freeSpaceOffset = PAGE_SIZE;  //no entries
     setMetaHeader(metaPage, mHeader);
     setLeafNodeHeader(firstPage, lHeader);
@@ -780,13 +775,18 @@ unsigned IndexManager::getLeafFreeSpace(LeafNodeHeader leafNodeHeader){
 }
 //splits the page into two from the leaf node at the midpoint
 RC IndexManager::splitLeafAtEntry(void * page, unsigned pageNum, MetaHeader &metaHeader,LeafNodeHeader &leafNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint, AttrType attrType){
-    cout<< "spliting node\n";
+//    cout<< "spliting node\n";
     LeafNodeEntry midEntry = getLeafNodeEntry(page, midpoint);
     void * splitKey = malloc(midEntry.length);
     void * newRightPage = malloc(PAGE_SIZE);
     void * temp;                  //used for memcpy saftey
+    unsigned originalNumOfEntries = leafNodeHeader.numOfEntries;
+    unsigned originalFreeSpaceOffset = leafNodeHeader.freeSpaceOffset;
     LeafNodeHeader newRightHeader;
     getKeyAtOffset(page, splitKey, midEntry.offset, midEntry.length);
+    printKey(splitKey, metaHeader.type);
+//    cout<< " <- spliting at this key\n";
+//    cout<< "mid point #, offset: "<< midpoint<< " "<<midEntry.offset<<endl;
     //copy higher entry data into right page
     memcpy(newRightPage, page, PAGE_SIZE);
 
@@ -794,15 +794,18 @@ RC IndexManager::splitLeafAtEntry(void * page, unsigned pageNum, MetaHeader &met
     unsigned dest = (PAGE_SIZE - midEntry.offset) + leafNodeHeader.freeSpaceOffset;
     unsigned src =  leafNodeHeader.freeSpaceOffset;
     unsigned byteSize = midEntry.offset - leafNodeHeader.freeSpaceOffset;
+//    cout<< "right node from, to, size "<< dest<< " "<<src<< " "<< byteSize<<endl;
     temp = malloc(byteSize);
-    memcpy(temp, page + src, byteSize);
+    memcpy(temp, newRightPage + src, byteSize);
     memcpy(newRightPage + dest, temp, byteSize);
     free(temp);
     //change left's header's free space offset and number of entries to manipulate size
     LeafNodeEntry itr;
     for (unsigned i = midpoint +1; i <leafNodeHeader.numOfEntries; i++){
       itr = getLeafNodeEntry(newRightPage, i);
+//      cout<< i<< " changing this offset: "<<itr.offset;
       itr.offset = itr.offset + PAGE_SIZE - midEntry.offset;
+//      cout<< " to: "<<itr.offset<<endl;
       setLeafNodeEntry(newRightPage, itr, i);
     }
     //shift entries left
@@ -814,31 +817,46 @@ RC IndexManager::splitLeafAtEntry(void * page, unsigned pageNum, MetaHeader &met
     memcpy(newRightPage+ dest, temp, byteSize);
     leafNodeHeader.freeSpaceOffset = midEntry.offset;
     leafNodeHeader.numOfEntries = midpoint +1;
+    leafNodeHeader.rightNode = ixfileHandle.getNumberOfPages();
     setLeafNodeHeader(page, leafNodeHeader);
+//    cout<< "the left leaf:\n";
+//    showLeaf(page, metaHeader.type);
+//    cout<< "new free space: "<< getLeafFreeSpace(leafNodeHeader)<<endl;
 
     //make a new leaf header for the right child
-    newRightHeader.numOfEntries = leafNodeHeader.numOfEntries - midpoint -1;
-    newRightHeader.freeSpaceOffset = (PAGE_SIZE - midEntry.offset) + leafNodeHeader.freeSpaceOffset;
-    newRightHeader.leftNode = pageNum;
-//    leafNodeHeader.rightNode = pageNum;
+    newRightHeader.numOfEntries = originalNumOfEntries - midpoint -1;
+    newRightHeader.freeSpaceOffset = (PAGE_SIZE - midEntry.offset) + originalFreeSpaceOffset;
+    newRightHeader.leftNode = leafNodeHeader.selfPage;
+    newRightHeader.selfPage = ixfileHandle.getNumberOfPages();
+    newRightHeader.parentPage = leafNodeHeader.parentPage;
+    setLeafNodeHeader(newRightPage, newRightHeader);
+//    cout<< "the right leaf: \n";
+//    showLeaf(newRightPage, metaHeader.type);
+//    cout<< "new free space: "<<getLeafFreeSpace(newRightHeader)<<endl;
+    if (ixfileHandle.appendPage(newRightPage))
+      return IX_SPLIT_FAILED;
+    metaHeader.numOfLeafNodes++;
     if (leafNodeHeader.parentPage){
       //push up key;
-      newRightHeader.parentPage = leafNodeHeader.parentPage;
-      setLeafNodeHeader(newRightPage, newRightHeader);
-      fixPageOrderSplit(metaHeader, newRightPage, ixfileHandle);
+  //    cout<< "have parent to push up to\n";
       if (pushUpSplitKey(newRightHeader.parentPage, metaHeader, ixfileHandle, splitKey,attrType, pageNum, leafNodeHeader.rightNode))
         return IX_SPLIT_FAILED;
     }
     else{
-      leafNodeHeader.rightNode = ixfileHandle.getNumberOfPages();
+      cout<< "no parent to push up to\n";
       leafNodeHeader.parentPage = leafNodeHeader.rightNode +1;
       newRightHeader. parentPage = leafNodeHeader.parentPage;
       setLeafNodeHeader(newRightPage, newRightHeader);
+      setLeafNodeHeader(page, leafNodeHeader);
       fixPageOrderSplitAndHeightIncrease(metaHeader, newRightPage, ixfileHandle);
       if (pushUpSplitKey(newRightHeader.parentPage, metaHeader,ixfileHandle, splitKey, attrType, pageNum, leafNodeHeader.rightNode))
         return IX_SPLIT_FAILED;
     }
-
+    ixfileHandle.writePage(leafNodeHeader.selfPage, page);
+    ixfileHandle.writePage(newRightHeader.selfPage, newRightPage);
+    ixfileHandle.readPage(META_PAGE, newRightPage);
+    setMetaHeader(newRightPage, metaHeader);
+    ixfileHandle.writePage(META_PAGE, newRightPage);
     free(newRightPage);
     free(splitKey);
     return SUCCESS;
@@ -851,38 +869,45 @@ void IndexManager::fixPageOrderSplit(MetaHeader &metaHeader, void * right, IXFil
 }
 //adds the split right node the the ned followed by the new parent following it
 void IndexManager::fixPageOrderSplitAndHeightIncrease(MetaHeader & metaHeader, void * right, IXFileHandle & ixfileHandle){
-  cout<<"fixing pages height increase\n";
-  void * internalPage = malloc(PAGE_SIZE);
+//  cout<<"fixing pages height increase\n";
+  void * newPage = malloc(PAGE_SIZE);
   InternalNodeHeader iHeader;
   iHeader.numOfEntries =0;
   iHeader.freeSpaceOffset = PAGE_SIZE;
   iHeader.parentPage = NO_PAGE;
-  iHeader.selfPage = ixfileHandle.getNumberOfPages() +1;
+  iHeader.selfPage = ixfileHandle.getNumberOfPages();
   iHeader.height =1;
-  setInternalNodeHeader(internalPage, iHeader);
-  ixfileHandle.appendPage(right);
-  ixfileHandle.appendPage(internalPage);
-  metaHeader.numOfLeafNodes++;
+  setInternalNodeHeader(newPage, iHeader);
+  ixfileHandle.appendPage(newPage);
   metaHeader.numOfInternalNodes++;
-  metaHeader.rootPage = ixfileHandle.getNumberOfPages() -1;
+  metaHeader.rootPage = iHeader.selfPage;
   metaHeader.height++;
-  free(internalPage);
+//  showInternalStatistics(internalPage);
+  ixfileHandle.readPage(META_PAGE, newPage);
+  setMetaHeader(newPage, metaHeader);
+  ixfileHandle.writePage(META_PAGE, newPage);
+//  showMetaHeaderStatistics(newPage);
+  free(newPage);
 }
 //inserts key and children page numbers to internal node
 RC IndexManager::pushUpSplitKey(unsigned pageNum, MetaHeader &metaHeader, IXFileHandle ixfileHandle, void * key, AttrType attrType, unsigned leftChildPage, unsigned rightChildPage){
+//  cout<< "attempting to split at: ";
+  printKey(key, metaHeader.type);
+//  cout<< "to page: "<<pageNum<<endl;
   void * tempPage = malloc(PAGE_SIZE);
   ixfileHandle.readPage(pageNum, tempPage);
   InternalNodeHeader iHeader = getInternalNodeHeader(tempPage);
   unsigned freeSpace = getInternalFreeSpace(iHeader);
   unsigned potentialSize = getKeySize(attrType, key) + sizeof(InternalNodeEntry);
   //if it its then we will insert the key in node
-  if(potentialSize > freeSpace){
-    cout<<"fits in parent\n";
+  if(potentialSize <= freeSpace){
+//    cout<<"fits in parent\n";
     bool spotFound;
     int spot = 0;
     InternalNodeEntry iEntry;
     void * keyInMemory;
     for (unsigned i =0; i < iHeader.numOfEntries; i ++){
+//        cout<< "looking through internal entries\n";
         iEntry = getInternalNodeEntry(tempPage, i);
         keyInMemory = malloc(iEntry.length);
         getKeyAtOffset(tempPage, keyInMemory, iEntry.offset, iEntry.length);
@@ -926,15 +951,15 @@ RC IndexManager::pushUpSplitKey(unsigned pageNum, MetaHeader &metaHeader, IXFile
     }
     //now determine where to insert in internal header
     if (spot == iHeader.numOfEntries || !iHeader.numOfEntries){      //add at the end
-        cout<< "inject internal after\n";
+//        cout<< "inject internal after\n";
         injectInternalAfter(tempPage, iHeader, key, attrType, leftChildPage, rightChildPage);
     }
     else if(spot < FIRST_ENTRY){  //add before
-        cout<< "inject before\n";
+//        cout<< "inject before\n";
         injectInternalBefore(tempPage, iHeader, key, attrType,leftChildPage, rightChildPage);
     }
     else{   //add before
-        cout<< "inject between\n";
+//        cout<< "inject between\n";
         injectInternalBetween(tempPage, spot, iHeader, key, attrType,leftChildPage,rightChildPage);
 
     }
@@ -946,6 +971,9 @@ RC IndexManager::pushUpSplitKey(unsigned pageNum, MetaHeader &metaHeader, IXFile
     unsigned splitReturn =0;
     splitReturn = splitInternalAtEntry(tempPage, metaHeader, iHeader, ixfileHandle, splitPos);
   }
+//  cout<< "pushed up\n";
+  ixfileHandle.writePage(iHeader.selfPage, tempPage);
+//  showInternalKeysAndChildren(tempPage, metaHeader.type);
   free(tempPage);
   return SUCCESS;
 }
@@ -1057,6 +1085,7 @@ unsigned IndexManager::getInternalFreeSpace(InternalNodeHeader internalNodeHeade
 }
 //splits an internal node at the midpoint
 RC IndexManager::splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint){
+  cout<<"spliting an internal node\n";
   //make another internal node
   InternalNodeEntry midEntry = getInternalNodeEntry(page, midpoint);
   InternalNodeHeader rightHeader;
@@ -1364,7 +1393,7 @@ void IndexManager::showLeaf(void * page, AttrType attrType){
 		printRids(page, lEntry);
 		free(key);
 	}
-	cout<<endl;
+	cout<<" has parent on page: "<<lHeader.parentPage<<endl;
 }
 //used to print out the offsets for debugging purposes
 void IndexManager::showLeafOffsetsAndLengths(void * page){
@@ -1441,9 +1470,9 @@ void IndexManager::showInternalKeysAndChildren(void * page, AttrType attrType){
     itr = getInternalNodeEntry(page, i);
     key = malloc(itr.length);
     getKeyAtOffset(page, key, itr.offset, itr.length);
-    cout<< " key: ";
+    cout<< " key:";
     printKey(key, attrType);
-    cout<< " left: "<<itr.leftChild<< "right: "<<itr.rightChild;
+    cout<< "left: "<<itr.leftChild<< " right: "<<itr.rightChild;
     free(key);
   }
   cout<<endl;
@@ -1459,4 +1488,9 @@ void IndexManager::showInternalStatistics(void * page){
     cout<< i<< " offset: "<<itr.offset<< " ";
   }
   cout<<endl;
+}
+//shows all metaheader stats for debbugging
+void IndexManager::showMetaHeaderStatistics(void * page){
+  MetaHeader mHeader = getMetaHeader(page);
+  cout<< "meta header stats:\nroot: "<<mHeader.rootPage<< " # of internal: "<<mHeader.numOfInternalNodes<< " # of leafs: "<<mHeader.numOfLeafNodes<< " height: "<<mHeader.height<<endl;
 }
