@@ -1,30 +1,85 @@
 1. Basic information
-Team number (e.g., 01) : 
-#1 Student ID : 
-#1 Student Name : 
-#2 Student ID : 
-#2 Student Name : 
+Team number (e.g., 01) : 16
+#1 Student ID :
+#1 Student Name :
+#2 Student ID :
+#2 Student Name :
+#3 Student ID :
+#3 Student Name :
 
 2. Meta-data page in an index file
-- Show your meta-data page of an index design if you have any. 
+- Show your meta-data page of an index design if you have any.
 
+the meta header contains the page number where the root is, the total number of
+internal non leaf nodes and the total number of leaf nodes in the tree. In
+additional it has the total height of the tree and the attribute type of the tree
 
 3. Index Entry Format
-- Show your index entry design (structure). 
+- Show your index entry design (structure).
 
+the tree is a textbook tree with internal nodes at height >1 with pointers to
+ their parents and each entry having pointers to pages of their children which could
+ be other internal nodes or leaf nodes. leaf nodes are where all saved values and
+ rids are stored together. every node is a page and every key in a node is inserted
+ in sorted order. The only limitation to storing more entries on a page is the
+ free space on a page. keys are can be variable lengths because of varchars.
 
 4. Page Format
 - Show your internal-page (non-leaf node) design.
 
+|--InternalNodeHeader--|--internalNodeEntrys 0-n---|-----freespace---|---keys n-0---|
+
+typedef struct InternalNodeHeader {
+    unsigned numOfEntries;
+    unsigned freeSpaceOffset;
+    unsigned parentPage;
+    unsigned height;
+    unsigned selfPage;
+} InternalNodeHeader;
+
+typedef struct InternalNodeEntry {
+    unsigned offset;
+    unsigned length;
+    unsigned leftChild;
+    unsigned rightChild;
+} InternalNodeEntry;
+
+these nodes are used to direct inserts/deletes/ and searches from the root to
+pages. they encompass an entire page and all entries are in order the entries are
+on the page in order of 0 to n with all having offsets to corrseponding keys and
+the key themself grow from the end of the page inward
+
 - Show your leaf-page (leaf node) design.
 
+|--LeafNodeHeader--|--LeafNodeEntry 0-n--|--freespace--|--key n--|--rids n--|...|--key 0--|--rids 0--|
+
+typedef struct LeafNodeHeader {
+    unsigned numOfEntries;
+    unsigned freeSpaceOffset;
+    unsigned parentPage;
+    unsigned selfPage;
+    unsigned leftNode;
+    unsigned rightNode;
+} LeafNodeHeader;
+
+typedef struct LeafNodeEntry {
+    unsigned offset;
+    unsigned numberOfRIDs;
+    unsigned length;
+    ixStatus status;
+} LeafNodeEntry;
+
+leaf nodes are almost the same as internal nodes except that all the rids are saved
+on disk instead of pointers to children. the entries have where the begining of
+the key is and the key length after the length beings all rids that the key has
 
 5. Implementation Detail
 - Have you implemented non-lazy deletion? Choose Yes or No: Also provide implementation details if yes.
+
+somewhat. when an rid is deleted we shift the data over that deleted rid but the key remains
 
 - Other implementation details:
 
 
 6. Other (optional)
 - Freely use this section to tell us about things that are related to the project 3, but not related to the other sections (optional)
-
