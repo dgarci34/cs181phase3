@@ -501,8 +501,8 @@ IX_ScanIterator::IX_ScanIterator()
 
 IX_ScanIterator::~IX_ScanIterator()
 {
-  if (allocatedPage)
-    free(pageData);
+
+//    free(pageData);
 }
 
 
@@ -550,7 +550,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 
 RC IX_ScanIterator::close()
 {
-    return -1;
+    return SUCCESS;
 }
 
 IXFileHandle::IXFileHandle()
@@ -817,6 +817,7 @@ RC IXFileHandle::fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, uns
     }
     cout << '\n';
 
+    free(page);
     return SUCCESS;
 }
 
@@ -2181,8 +2182,8 @@ RC IX_ScanIterator::scanCurrPage(RID &rid, void *key)
                 if (isMatchedLowCondition && isMatchedHighCondition)
                 {
                     // set RID
-                    ridOffset = lNodeEntry.offset + (currRid * sizeof(RID));
-                    memcpy(&rid, pageData + ridOffset, sizeof(RID));
+                    ridOffset = lNodeEntry.offset + sizeof(int) + (currRid * sizeof(RID));
+                    memcpy(&rid, (pageData + ridOffset), sizeof(RID));
 
                     // set key
                     memcpy(key, tempKey, sizeof(int));
@@ -2274,7 +2275,7 @@ RC IX_ScanIterator::scanCurrPage(RID &rid, void *key)
                 if (isMatchedLowCondition && isMatchedHighCondition)
                 {
                     // set RID
-                    ridOffset = lNodeEntry.offset + (currRid * sizeof(RID));
+                    ridOffset = lNodeEntry.offset + sizeof(float) + (currRid * sizeof(RID));
                     memcpy(&rid, pageData + ridOffset, sizeof(RID));
 
                     // set key
@@ -2372,7 +2373,7 @@ RC IX_ScanIterator::scanCurrPage(RID &rid, void *key)
                 if (isMatchedLowCondition && isMatchedHighCondition)
                 {
                     // set RID
-                    ridOffset = lNodeEntry.offset + (currRid * sizeof(RID));
+                    ridOffset = lNodeEntry.offset + keyLength + (currRid * sizeof(RID));
                     memcpy(&rid, pageData + ridOffset, sizeof(RID));
 
                     // set key
