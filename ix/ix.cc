@@ -328,15 +328,34 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     if(ixfileHandle.writePage(childPageNum,pageData))
       return IX_WRITE_FAILED;
   free(pageData);
-//	cout<< "check---------------------------------------------\n";
+/*	cout<< "check---------------------------------------------\n";
   void * checkPage = malloc(PAGE_SIZE);
 	ixfileHandle.readPage(mHeader.rootPage, checkPage);
 	InternalNodeHeader hCheck = getInternalNodeHeader(checkPage);
-//	showInternalKeysAndChildren(checkPage, attribute.type);
-//  cout<< "free space: "<< getInternalFreeSpace(hCheck)<<endl;
+	showInternalKeysAndChildren(checkPage, attribute.type);
   ixfileHandle.readPage(META_PAGE, checkPage);
-//  showMetaHeaderStatistics(checkPage);
-  free(checkPage);
+  showMetaHeaderStatistics(checkPage);
+  MetaHeader mCheck = getMetaHeader(checkPage);
+  if (mCheck.numOfLeafNodes == 4){
+    ixfileHandle.readPage(1, checkPage);
+    LeafNodeHeader lCheck = getLeafNodeHeader(checkPage);
+    cout<< "page 1 rightnode: "<<lCheck.rightNode<<endl;
+    ixfileHandle.readPage(2, checkPage);
+    lCheck = getLeafNodeHeader(checkPage);
+    cout<< "page 2 rightnode: "<<lCheck.rightNode<<endl;
+    ixfileHandle.readPage(4, checkPage);
+    lCheck = getLeafNodeHeader(checkPage);
+    cout<< "page 4 rightNode: "<<lCheck.rightNode<<endl;
+    ixfileHandle.readPage(5, checkPage);
+    lCheck = getLeafNodeHeader(checkPage);
+    cout<< "page 5 leftNode: "<<lCheck.leftNode<<endl;
+    cout<< "page 5 rightchild "<<lCheck.rightNode<<endl;
+  }
+  ixfileHandle.readPage(2, checkPage);
+
+//  cout<< "free space: "<< getInternalFreeSpace(hCheck)<<endl;
+
+  free(checkPage);*/
   return SUCCESS;
 
 }
