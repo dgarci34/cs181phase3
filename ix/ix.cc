@@ -362,8 +362,55 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
-    return -1;
+    MetaHeader mHeader;
+    unsigned treeHeight;
+    unsigned pageNum;
+    AttrType type;
+
+    IndexId indexId;
+    unsigned nextNodePageNum;
+
+    void * page = malloc(PAGE_SIZE);
+
+    mHeader = getMetaHeader(page);
+    treeHeight = mHeader.height;
+    pageNum = mHeader.rootPage;
+    type = mHeader.type;
+
+    // the search key and the key in tree should match
+    if (type != attribute.type)
+        return IX_TYPE_ERROR;
+
+    // tree height must be >= 0
+    if (treeHeight < 0)
+        return IX_TREE_ERROR;
+
+    // only one node in tree
+    if (treeHeight == 0)
+    {
+        free(page);
+
+        if (searchLeafNode(ixfileHandle, pageNum, type, key, rid, &indexId))
+            return IX_TARGET_DOES_EXIST;
+        cout<< "made it\n";
+        // tbc -- mcmcpy the record
+    }
+
+    // find the leaf node that store the search key
+    nextNodePageNum = pageNum;
+    for (unsigned i = 0; i < (treeHeight - 1); i++)
+    {
+        nextNodePageNum = getNextNodePageNum(ixfileHandle, nextNodePageNum, type, key, rid);
+    }
+
+    // find the target in LeafNode
+    if (searchLeafNode(ixfileHandle, nextNodePageNum, type, key, rid, &indexId))
+        return IX_TARGET_DOES_EXIST;
+    // tbc -- mcmcpy the record
+
+    return SUCCESS;
 }
+
 
 
 RC IndexManager::scan(IXFileHandle &ixfileHandle,
@@ -378,40 +425,151 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
 }
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const{
-  //there must be a tree
-  if (!ixfileHandle.getNumberOfPages())
-    return;
-  cout<< "----------------BTREE " <<ixfileHandle.fileName<< "--------------------- \n\n";
-  MetaHeader mHeader;
-  memcpy(&mHeader, ixfileHandle._file, sizeof(MetaHeader));
-/*  void * pageData = malloc(PAGE_SIZE);
-  ixfileHandle.readPage(META_PAGE, pageData);
-  MetaHeader mHeader;
-  IXFileHandle *ix = &ixfileHandle;
-  mHeader = ix->getMetaHeader(pageData);
+    IXFileHandle tempFileHandle = ixfileHandle;
 
-  //get meta
-  free(pageData);*/
+    //there must be a tree
+    if (!ixfileHandle.getNumberOfPages())
+        return;
+    cout<< "----------------BTREE " <<ixfileHandle.fileName<< "--------------------- \n\n";
+
+    void * page = malloc(PAGE_SIZE);
+
+    MetaHeader mHeader;
+    AttrType type;
+    unsigned treeHeight;
+    unsigned currHeight;
+    unsigned prevHeight;
+
+    MetaNode mNode;
+    stack<MetaNode> pageNumStack;
+    unsigned currPageNum;
+    unsigned leftChildPageNum;
+    unsigned rightChildPageNum;
+
+    // find root page
+    if (tempFileHandle.readPage(META_PAGE, page))
+        return;
+
+    mHeader = tempFileHandle.fhGetMetaHeader(page);
+    type = mHeader.type;
+    treeHeight = mHeader.height;
+    currHeight = 0;
+    prevHeight = 0;
+
+    // push the page number of root to stack
+    tempFileHandle.setMetaNode(&mNode, mHeader.rootPage, 0);
+    pageNumStack.push(mNode);
+
+    // print tree (More than one node)
+    while (!pageNumStack.empty())
+    {
+        // get the top MetaNode on stack
+        mNode = pageNumStack.top();
+        pageNumStack.pop();
+        currHeight = mNode.height;
+        currPageNum = mNode.pageNum;
+
+        if (currHeight > treeHeight)
+        {
+            cout << "***** ERROR: the height of node is greater than the maximum tree height *****" << endl;
+            return;
+        }
+
+        // print Leaf Node if it is a Leaf Node
+        if (currHeight == treeHeight)
+        {
+            ixfileHandle.fhPrintLeafNode(tempFileHandle, currHeight, currPageNum, type, &pageNumStack);
+        }
+
+        // print Internal Node if it is a Internal Node
+        if (currHeight < treeHeight)
+        {
+            ixfileHandle.fhPrintInternalNode(tempFileHandle, currHeight, currPageNum, type, pageNumStack);
+        }
+
+        // print the symbol for formating the JSON string
+        if (!pageNumStack.empty())
+        {
+            unsigned nextHeight = (pageNumStack.top()).height;
+
+            // next node has the same height
+            // this implies that next node has the same parent as the current node
+            if (nextHeight == currHeight)
+                cout << ",\n";
+            // all the children belongs to the current node parent has been printed
+            else if (nextHeight < currHeight)
+                cout << "\n" << string((currHeight - 1), '\t') << "]}\n";
+        }
+        // print "]}" close the JSON
+        else
+        {
+            for (unsigned i = currHeight; i > 0; i--)
+                cout << string((currHeight -1), '\t') << "]}\n";
+        }
+
+        // update the info
+        prevHeight = currHeight;
+    }
+
+
+    free(page);
 }
+
 
 IX_ScanIterator::IX_ScanIterator()
 {
+    im = IndexManager::instance();
 }
 
 IX_ScanIterator::~IX_ScanIterator()
 {
-  if (allocatedPage)
-    free(pageData);
 }
 
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 {
-    return -1;
+    if (totalLeaves == 0)
+    {
+        cout << "No Leaf Page" << endl;
+        return IX_EOF;
+    }
+
+    LeafNodeHeader lNodeHeader;
+    LeafNodeEntry lNodeEntry;
+    RC rc;
+
+    ixfh->readPage(currPage, pageData);
+    lNodeHeader = im->getLeafNodeHeader(pageData);
+    totalEntry = lNodeHeader.numOfEntries;
+
+    // scan current node
+    rc = scanCurrPage(rid, key);
+
+    // scan until next entry is found or all entries are scanned
+    while (rc == IX_NOT_FOUND)
+    {
+        // prepare to scan next node
+        currPage = lNodeHeader.rightNode;
+        currEntry = FIRST_ENTRY;
+        currRid = FIRST_RID;
+
+        // check if all the node has been scaned
+        if (currPage == 0)
+            return IX_EOF;
+
+        ixfh->readPage(currPage, pageData);
+        lNodeHeader = im->getLeafNodeHeader(pageData);
+        totalEntry = lNodeHeader.numOfEntries;
+
+        // scan the new node
+        rc = scanCurrPage(rid, key);
+    }
+
+    return rc;
 }
 
 RC IX_ScanIterator::close()
 {
-    return -1;
+    return SUCCESS;
 }
 
 IXFileHandle::IXFileHandle()
@@ -1424,60 +1582,7 @@ void IndexManager::showLeafOffsetsAndLengths(void * page){
   }
   cout<< endl;
 }
-//************************************scan helpers
-//used to initialize a scan iterator
-RC IX_ScanIterator::scanInit(IXFileHandle &ixfH,
-        const Attribute &attr,
-        const void      *lowKey,
-        const void      *highKey,
-        bool  lowKeyInclusive,
-        bool  highKeyInclusive)
-{
-  cout<<"initializing ix iterator\n";
-  //start at the first leaf first entry;
-  currPage = INITIAL_PAGE;
-  currEntry = FIRST_ENTRY;
-  totalLeaves =0;
-  totalEntry =0;
-  //buffer for the current pageNum
-  pageData = malloc(PAGE_SIZE);
-  allocatedPage = true;
 
-  //store variables passed into
-  ixfh = &ixfH;
-  low = lowKey;
-  //check for unconditional scans
-  if (lowKey == NULL)
-    infiniteLow = true;
-  if (highKey == NULL)
-    infiniteHigh = true;
-  high = highKey;
-  lowInc = lowKeyInclusive;
-  highInc = highKeyInclusive;
-
-  skipList.clear();
-
-  //use metahaeder to get the total number of leaves
-  if (!ixfh->getNumberOfPages()){
-    cout<< "no pages\n";
-    return SUCCESS;
-  }
-  ixfh->readPage(META_PAGE, pageData);
-  MetaHeader mHeader = im->getMetaHeader(pageData);
-  totalLeaves = mHeader.numOfLeafNodes;
-  cout<< "total leaves: "<<totalLeaves<<endl;
-  if(totalLeaves > 0){
-    if(ixfh->readPage(INITIAL_PAGE, pageData))
-      return IX_READ_FAILED;
-  }
-  else
-    return SUCCESS;
-  cout<< "have page in scan\n";
-  //get number of entries in the initial page
-  LeafNodeHeader lHeader = im->getLeafNodeHeader(pageData);
-  totalEntry = lHeader.numOfEntries;
-  return SUCCESS;
-}
 //displays all keys in internal node for debugging
 void IndexManager::showInternalKeysAndChildren(void * page, AttrType attrType){
   InternalNodeHeader iHeader = getInternalNodeHeader(page);
@@ -1511,4 +1616,837 @@ void IndexManager::showInternalStatistics(void * page){
 void IndexManager::showMetaHeaderStatistics(void * page){
   MetaHeader mHeader = getMetaHeader(page);
   cout<< "meta header stats:\nroot: "<<mHeader.rootPage<< " # of internal: "<<mHeader.numOfInternalNodes<< " # of leafs: "<<mHeader.numOfLeafNodes<< " height: "<<mHeader.height<<endl;
+}
+//returns the metaHeader from page 0
+MetaHeader IXFileHandle::fhGetMetaHeader(void * page)
+{
+    MetaHeader mHeader;
+    memcpy(&mHeader,page,sizeof(MetaHeader));
+    return mHeader;
+}
+//sets the meta node
+void IXFileHandle::setMetaNode(MetaNode * mNodeEntry, unsigned pageNum, unsigned height)
+{
+    mNodeEntry->pageNum = pageNum;
+    mNodeEntry->height = height;
+}
+//print tree helper
+RC IXFileHandle::fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> * pageNumStack)
+{
+    LeafNodeHeader lNodeHeader;
+    LeafNodeEntry lNodeEntry;
+
+    void * page = malloc(PAGE_SIZE);
+    ixfileHandle.readPage(pageNum, page);
+
+    lNodeHeader = ixfileHandle.fhGetLeafNodeHeader(page);
+
+    // entries should be >= 0
+    if (lNodeHeader.numOfEntries < 0)
+    {
+        free(page);
+        return IX_READ_FAILED;
+    }
+
+    int iKey;
+    float rKey;
+    void * rawKey;
+    char * charKey;
+    string strKey;
+    unsigned keyLength;
+
+    RID rid;
+    unsigned ridOffset;
+    unsigned k;
+
+    cout << string(height, '\t') << "{\"keys\":[";
+    // print each key and corresponding RIDs in the leaf node
+    for (unsigned i = 0; i < lNodeHeader.numOfEntries; i++)
+    {
+        lNodeEntry = ixfileHandle.fhGetLeafNodeEntry(page, i);
+
+        switch (type)
+        {
+            case TypeInt:
+            {
+                // print key
+                memcpy(&iKey, (page + lNodeEntry.offset), sizeof(int));
+                cout << "\"" << iKey << ":[";
+
+                // print RIDs
+                for (k = 0; k < lNodeEntry.numberOfRIDs; k++)
+                {
+                    ridOffset = lNodeEntry.offset + sizeof(int) + (k * sizeof(RID));
+                    rid = getRid(page, ridOffset);
+                    cout << "(" << rid.pageNum << "," << rid.slotNum << ")";
+
+                    // print "," when it is not the last RID of key
+                    if (k < (lNodeEntry.numberOfRIDs - 1))
+                        cout << ",";
+                }
+                break;
+            }
+            case TypeReal:
+            {
+                // print key
+                memcpy(&rKey, (page + lNodeEntry.offset), sizeof(float));
+                cout << "\"" << rKey << ":[";
+
+                // print RIDs
+                for (k = 0; k < lNodeEntry.numberOfRIDs; k++)
+                {
+                    ridOffset = lNodeEntry.offset + sizeof(float) + (k * sizeof(RID));
+                    rid = getRid(page, ridOffset);
+                    cout << "(" << rid.pageNum << "," << rid.slotNum << ")";
+
+                    // print "," when it is not the last RID of key
+                    if (k < (lNodeEntry.numberOfRIDs - 1))
+                        cout << ",";
+                }
+                break;
+            }
+            case TypeVarChar:
+            {
+                // print key
+                memcpy(&keyLength, (page + lNodeEntry.offset), sizeof(int));
+                rawKey = malloc(keyLength);
+                memcpy(rawKey, (page + lNodeEntry.offset + sizeof(int)), keyLength);
+                charKey = (char *) rawKey;
+                strKey = charKey;
+                cout << "\"" << strKey << ":[";
+
+                // print RIDs
+                for (k = 0; k < lNodeEntry.numberOfRIDs; k++)
+                {
+                    ridOffset = lNodeEntry.offset + sizeof(int) + keyLength + (k * sizeof(RID));
+                    rid = getRid(page, ridOffset);
+                    cout << "(" << rid.pageNum << "," << rid.slotNum << ")";
+
+                    // print "," when it is not the last RID of key
+                    if (k < (lNodeEntry.numberOfRIDs - 1))
+                        cout << ",";
+                }
+
+                free(rawKey);
+                break;
+            }
+            default:
+            {
+                free(page);
+                return IX_TYPE_ERROR;
+            }
+        }
+
+        cout << "]\"";
+        if (i < (lNodeHeader.numOfEntries -1))
+            cout << ",";
+    }
+    cout << "]}";
+
+    if (!pageNumStack->empty())
+    {
+        // if next node on stack is leaf node
+        // print a ","
+        if ( (pageNumStack->top()).height == height)
+            cout << ",";
+    }
+    cout << '\n';
+
+    free(page);
+    return SUCCESS;
+}
+//prints internal node
+RC IXFileHandle::fhPrintInternalNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> &pageNumStack)
+{
+    InternalNodeHeader iNodeHeader;
+    InternalNodeEntry iNodeEntry;
+
+    void * page = malloc(PAGE_SIZE);
+    ixfileHandle.readPage(pageNum, page);
+
+    iNodeHeader = ixfileHandle.fhGetInternalNodeHeader(page);
+
+    // entries should be >= 0
+    if (iNodeHeader.numOfEntries < 0)
+    {
+        free(page);
+        return IX_READ_FAILED;
+    }
+
+    int iKey;
+    float rKey;
+    void * rawKey;
+    char * charKey;
+    string strKey;
+    unsigned keyLength;
+    unsigned childrenPageNumArr[iNodeHeader.numOfEntries + 1];
+    MetaNode mNode;
+
+    RID rid;
+    unsigned ridOffset;
+
+    cout << string(height, '\t') << "{\"keys\":[";
+
+    // print keys
+    for (unsigned i = 0; i < iNodeHeader.numOfEntries; i++)
+    {
+        iNodeEntry = ixfileHandle.fhGetInternalNodeEntry(page, i);
+
+        switch (type)
+        {
+            case TypeInt:
+            {
+                // print key
+                memcpy(&iKey, (page + iNodeEntry.offset), sizeof(int));
+                cout << iKey;
+                break;
+            }
+
+            case TypeReal:
+            {
+                // print key
+                memcpy(&rKey, (page + iNodeEntry.offset), sizeof(float));
+                cout << rKey;
+                break;
+            }
+
+            case TypeVarChar:
+            {
+                // print key
+                memcpy(&keyLength, (page + iNodeEntry.offset), sizeof(int));
+                rawKey = malloc(keyLength);
+                memcpy(rawKey, (page + iNodeEntry.offset + sizeof(int)), keyLength);
+                charKey = (char *) rawKey;
+                strKey = charKey;
+                cout << "\"" << strKey << "\"";
+                break;
+            }
+
+            default:
+            {
+                free(page);
+                return IX_TYPE_ERROR;
+            }
+        }
+
+        if (i < (iNodeHeader.numOfEntries -1))
+            cout << ",";
+
+        // store the page number of each child
+        // push them to stack afterward
+        childrenPageNumArr[i] = iNodeEntry.leftChild;
+    }
+
+    // store last child (right child of the last entry in node)
+    childrenPageNumArr[iNodeHeader.numOfEntries] = iNodeEntry.rightChild;
+
+    // push the page number of childern to stack
+    // in reversed order (the most right child pushed first)
+    // so the most left child would be at the top of the stack
+    for (int k = iNodeHeader.numOfEntries; k >= 0; k--)
+    {
+        setMetaNode(&mNode, childrenPageNumArr[k], (height + 1));
+        pageNumStack.push(mNode);
+    }
+
+    cout << "],\n";
+    cout << "\n" << string(height, '\t') << "\"children\":[\n";
+
+    return SUCCESS;
+}
+//get leaf node header from passed in passed in page
+LeafNodeHeader IXFileHandle::fhGetLeafNodeHeader(void * page){
+    LeafNodeHeader lHeader;
+    memcpy(&lHeader, page, sizeof(LeafNodeHeader));
+    return lHeader;
+}
+
+//get InternalNodeHeader
+InternalNodeHeader IXFileHandle::fhGetInternalNodeHeader(void * page){
+    InternalNodeHeader iHeader;
+    memcpy(&iHeader, page, sizeof(InternalNodeHeader));
+    return iHeader;
+}
+//return a specific leaf node entry
+LeafNodeEntry IXFileHandle::fhGetLeafNodeEntry(void * page, unsigned slotNumber){
+    LeafNodeEntry lEntry;
+    memcpy(&lEntry, page + sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * slotNumber), sizeof(LeafNodeEntry));
+    return lEntry;
+}
+
+//return a specific Internal node entry
+InternalNodeEntry IXFileHandle::fhGetInternalNodeEntry(void * page, unsigned slotNumber){
+    InternalNodeEntry iEntry;
+    memcpy(&iEntry, page + sizeof(InternalNodeHeader) + (sizeof(InternalNodeEntry) * slotNumber), sizeof(InternalNodeEntry));
+    return iEntry;
+}
+//returns rid
+RID IXFileHandle::getRid(void * page, unsigned offset)
+{
+    RID rid;
+    memcpy(&rid, (page + offset), sizeof(RID));
+    return rid;
+}
+//************************************scan helpers
+//used to initialize a scan iterator
+RC IX_ScanIterator::scanInit(IXFileHandle &ixfH,
+        const Attribute &attr,
+        const void      *lowKey,
+        const void      *highKey,
+        bool  lowKeyInclusive,
+        bool  highKeyInclusive)
+{
+//  cout<<"initializing ix iterator\n";
+  //start at the first leaf first entry;
+  currPage = INITIAL_PAGE;
+  currEntry = FIRST_ENTRY;
+  currRid = FIRST_RID;
+  totalLeaves =0;
+  totalEntry =0;
+  attrType = attr.type;
+  //buffer for the current pageNum
+  pageData = malloc(PAGE_SIZE);
+  allocatedPage = true;
+
+  //store variables passed into
+  ixfh = &ixfH;
+  low = lowKey;
+  //check for unconditional scans
+  if (lowKey == NULL)
+    infiniteLow = true;
+  if (highKey == NULL)
+    infiniteHigh = true;
+  high = highKey;
+  lowInc = lowKeyInclusive;
+  highInc = highKeyInclusive;
+
+  skipList.clear();
+
+  //use metahaeder to get the total number of leaves
+  if (!ixfh->getNumberOfPages()){
+//    cout<< "no pages\n";
+    return SUCCESS;
+  }
+  ixfh->readPage(META_PAGE, pageData);
+  MetaHeader mHeader = im->getMetaHeader(pageData);
+  totalLeaves = mHeader.numOfLeafNodes;
+//  cout<< "total leaves: "<<totalLeaves<<endl;
+  if(totalLeaves > 0){
+    if(ixfh->readPage(INITIAL_PAGE, pageData))
+      return IX_READ_FAILED;
+  }
+  //get number of entries in the initial page
+  LeafNodeHeader lHeader = im->getLeafNodeHeader(pageData);
+  totalEntry = lHeader.numOfEntries;
+
+  return SUCCESS;
+}
+
+RC IX_ScanIterator::scanCurrPage(RID &rid, void *key)
+{
+    LeafNodeEntry lNodeEntry;
+    void * tempKey;
+    unsigned keyLength;
+    bool isMatchedLowCondition;
+    bool isMatchedHighCondition;
+
+    isMatchedLowCondition = false;
+    isMatchedHighCondition = false;
+    int compareValue;
+    unsigned ridOffset;
+    unsigned numberOfRIDs;
+
+    switch (attrType)
+    {
+        case TypeInt:
+        {
+            while(currEntry < totalEntry)
+            {
+                // get key
+                lNodeEntry = im->getLeafNodeEntry(pageData, currEntry);
+
+                // check if the key is deleted
+                if (lNodeEntry.status == dead)
+                {
+                    currEntry += 1;
+                    continue;
+                }
+
+                // check if all the RIDs of the current entry are printed
+                numberOfRIDs = lNodeEntry.numberOfRIDs;
+                if (currRid >= numberOfRIDs)
+                {
+                    currRid = FIRST_RID;
+                    currEntry += 1;
+                    continue;
+                }
+
+                tempKey = malloc(sizeof(int));
+                memcpy(tempKey, (pageData + lNodeEntry.offset), sizeof(int));
+
+                // find if key low key conditions
+                if (infiniteLow)
+                {
+                    // no limitation on low key
+                    isMatchedLowCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareInts(tempKey, low);
+
+                    // find if key in entry is greater than the low key
+                    if (compareValue == GREATER_THAN)
+                        isMatchedLowCondition = true;
+                    else if (lowInc && compareValue == EQUAL_TO)
+                        isMatchedLowCondition = true;
+                    else
+                        isMatchedLowCondition = false;
+                }
+
+                // find if key high key conditions
+                if (infiniteHigh)
+                {
+                    // no limitation on high key
+                    isMatchedHighCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareInts(high, tempKey);
+
+                    // find if key in entry is less than the high key
+                    if (compareValue == GREATER_THAN)
+                        isMatchedHighCondition = true;
+                    else if (highInc && compareValue == EQUAL_TO)
+                        isMatchedHighCondition = true;
+                    else
+                    {
+                        // all the keys that have not been scan > high key
+                        free(tempKey);
+                        return IX_EOF;
+                    }
+                }
+
+                // found key that matched both low and high conditions
+                if (isMatchedLowCondition && isMatchedHighCondition)
+                {
+                    // set RID
+                    ridOffset = lNodeEntry.offset + sizeof(int) + (currRid * sizeof(RID));
+                    memcpy(&rid, (pageData + ridOffset), sizeof(RID));
+
+                    // set key
+                    memcpy(key, tempKey, sizeof(int));
+
+                    // update the info
+                    currRid += 1;
+
+                    free(tempKey);
+                    return SUCCESS;
+                }
+
+                currRid = FIRST_RID;
+                currEntry += 1;
+            }
+
+            free(tempKey);
+            break;
+        }
+
+        case TypeReal:
+        {
+            while(currEntry < totalEntry)
+            {
+                // get key
+                lNodeEntry = im->getLeafNodeEntry(pageData, currEntry);
+
+                // check if the key is deleted
+                if (lNodeEntry.status == dead)
+                {
+                    currEntry += 1;
+                    continue;
+                }
+
+                // check if all the RIDs of the current entry are printed
+                numberOfRIDs = lNodeEntry.numberOfRIDs;
+                if (currRid >= numberOfRIDs)
+                {
+                    currRid = FIRST_RID;
+                    currEntry += 1;
+                    continue;
+                }
+
+                tempKey = malloc(sizeof(float));
+                memcpy(tempKey, (pageData + lNodeEntry.offset), sizeof(float));
+
+                // find if key low key conditions
+                if (infiniteLow)
+                {
+                    // no limitation on low key
+                    isMatchedLowCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareReals(tempKey, low);
+
+                    // find if key in entry is greater than the low key
+                    if (compareValue == GREATER_THAN)
+                        isMatchedLowCondition = true;
+                    else if (lowInc && compareValue == EQUAL_TO)
+                        isMatchedLowCondition = true;
+                    else
+                        isMatchedLowCondition = false;
+                }
+
+                // find if key high key conditions
+                if (infiniteHigh)
+                {
+                    // no limitation on high key
+                    isMatchedHighCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareReals(high, tempKey);
+
+                    // find if high key is greater than key in entry
+                    if (compareValue == GREATER_THAN)
+                        isMatchedHighCondition = true;
+                    else if (highInc && compareValue == EQUAL_TO)
+                        isMatchedHighCondition = true;
+                    else
+                    {
+                        // all the keys that have not been scan are greter than high key
+                        free(tempKey);
+                        return IX_EOF;
+                    }
+                }
+
+                // found key that matched both low and high conditions
+                if (isMatchedLowCondition && isMatchedHighCondition)
+                {
+                    // set RID
+                    ridOffset = lNodeEntry.offset + sizeof(float) + (currRid * sizeof(RID));
+                    memcpy(&rid, pageData + ridOffset, sizeof(RID));
+
+                    // set key
+                    memcpy(key, tempKey, sizeof(int));
+
+                    // update the info
+                    currRid += 1;
+
+                    free(tempKey);
+                    return SUCCESS;
+                }
+
+                // key in current entry is not matched
+                // go the the next entry
+                currRid = FIRST_RID;
+                currEntry += 1;
+            }
+
+            free(tempKey);
+            break;
+        }
+
+        case TypeVarChar:
+        {
+            while(currEntry < totalEntry)
+            {
+                // get key
+                lNodeEntry = im->getLeafNodeEntry(pageData, currEntry);
+
+                // check if the key is deleted
+                if (lNodeEntry.status == dead)
+                {
+                    currEntry += 1;
+                    continue;
+                }
+
+                // check if all the RIDs of the current entry are printed
+                numberOfRIDs = lNodeEntry.numberOfRIDs;
+                if (currRid >= numberOfRIDs)
+                {
+                    currRid = FIRST_RID;
+                    currEntry += 1;
+                    continue;
+                }
+
+                // read key from leaf node
+                memcpy(&keyLength, (pageData + lNodeEntry.offset), sizeof(int));
+
+                tempKey = malloc(keyLength);
+                memcpy(tempKey, (pageData + lNodeEntry.offset + sizeof(int)), keyLength);
+
+                // find if key low key conditions
+                if (infiniteLow)
+                {
+                    // no limitation on low key
+                    isMatchedLowCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareVarChars(tempKey, low);
+
+                    // find if key in entry is greater than the low key
+                    if (compareValue == GREATER_THAN)
+                        isMatchedLowCondition = true;
+                    else if (lowInc && compareValue == EQUAL_TO)
+                        isMatchedLowCondition = true;
+                    else
+                        isMatchedLowCondition = false;
+                }
+
+                // find if key high key conditions
+                if (infiniteHigh)
+                {
+                    // no limitation on high key
+                    isMatchedHighCondition = true;
+                }
+                else
+                {
+                    compareValue = im->compareVarChars(high, tempKey);
+
+                    // find if high key is greater than key in entry
+                    if (compareValue == GREATER_THAN)
+                        isMatchedHighCondition = true;
+                    else if (highInc && compareValue == EQUAL_TO)
+                        isMatchedHighCondition = true;
+                    else
+                    {
+                        // all the keys that have not been scan are greter than high key
+                        free(tempKey);
+                        return IX_EOF;
+                    }
+                }
+
+                // found key that matched both low and high conditions
+                if (isMatchedLowCondition && isMatchedHighCondition)
+                {
+                    // set RID
+                    ridOffset = lNodeEntry.offset + keyLength + (currRid * sizeof(RID));
+                    memcpy(&rid, pageData + ridOffset, sizeof(RID));
+
+                    // set key
+                    memcpy(key, tempKey, keyLength);
+
+                    // update the info
+                    currRid += 1;
+
+                    free(tempKey);
+                    return SUCCESS;
+                }
+
+                // key in current entry is not matched
+                // go the the next entry
+                currRid = FIRST_RID;
+                currEntry += 1;
+            }
+
+            free(tempKey);
+            break;
+        }
+
+        default:
+            return IX_TYPE_ERROR;
+    }
+
+    // all keys in current leaf node is scanned
+    // and printed if they are between low and high key
+    return IX_NOT_FOUND;
+}
+//delete helpers
+RC IndexManager::searchLeafNode(IXFileHandle ixfileHandle, unsigned pageNum, AttrType type, const void * key, RID rid, IndexId * indexId)
+{
+    LeafNodeHeader lNodeHeader;
+    LeafNodeEntry lNodeEntry;
+
+    void * page = malloc(PAGE_SIZE);
+    ixfileHandle.readPage(pageNum, page);
+
+    lNodeHeader = getLeafNodeHeader(page);
+
+    // entries should be >= 0
+    if (lNodeHeader.numOfEntries < 0)
+    {
+        free(page);
+        return IX_READ_FAILED;
+    }
+
+    void * rawKey;
+    unsigned keyLength;
+    RID tempRid;
+    unsigned ridOffset;
+    unsigned k;
+
+    // find key
+    for (unsigned i = 0; i < lNodeHeader.numOfEntries; i++)
+    {
+        lNodeEntry = getLeafNodeEntry(page, i);
+
+        switch (type)
+        {
+            case TypeInt:
+            {
+                rawKey = malloc(sizeof(int));
+                memcpy(rawKey, (page + lNodeEntry.offset), sizeof(int));
+                if (compareInts(key, rawKey) == EQUAL_TO)
+                {
+                    // find RID
+                    for (k = 0; k < lNodeEntry.numberOfRIDs; i++)
+                    {
+                        ridOffset = lNodeEntry.offset + sizeof(int) + (k * sizeof(RID));
+                        tempRid = ixfileHandle.getRid(page, ridOffset);
+
+                        if (tempRid.pageNum == rid.pageNum && tempRid.slotNum == rid.slotNum)
+                        {
+                            indexId->pageId = pageNum;
+                            indexId->entryId = i;
+
+                            free(rawKey);
+                            free(page);
+                            return SUCCESS;
+                        }
+                    }
+                }
+                free(rawKey);
+                break;
+            }
+
+            case TypeReal:
+            {
+                rawKey = malloc(sizeof(float));
+                memcpy(rawKey, (page + lNodeEntry.offset), sizeof(float));
+                if (compareReals(key, rawKey) == EQUAL_TO)
+                {
+                    // find RID
+                    for (k = 0; k < lNodeEntry.numberOfRIDs; i++)
+                    {
+                        ridOffset = lNodeEntry.offset +  sizeof(float) + (k * sizeof(RID));
+                        rid = ixfileHandle.getRid(page, ridOffset);
+
+                        if (tempRid.pageNum == rid.pageNum && tempRid.slotNum == rid.slotNum)
+                        {
+                            indexId->pageId = pageNum;
+                            indexId->entryId = i;
+
+                            free(rawKey);
+                            free(page);
+                            return SUCCESS;
+                        }
+                    }
+                }
+                free(rawKey);
+                break;
+            }
+
+            case TypeVarChar:
+            {
+                memcpy(&keyLength, (page + lNodeEntry.offset), sizeof(int));
+                rawKey = malloc(keyLength);
+                memcpy(rawKey, (page + lNodeEntry.offset + sizeof(int)), keyLength);
+
+                if (compareVarChars(key, rawKey) == EQUAL_TO)
+                {
+                    for (k = 0; k < lNodeEntry.numberOfRIDs; i++)
+                    {
+                        ridOffset = lNodeEntry.offset + sizeof(int) + keyLength + (k * sizeof(RID));
+                        rid = ixfileHandle.getRid(page, ridOffset);
+
+                        if (tempRid.pageNum == rid.pageNum && tempRid.slotNum == rid.slotNum)
+                        {
+                            indexId->pageId = pageNum;
+                            indexId->entryId = i;
+
+                            free(rawKey);
+                            free(page);
+                            return SUCCESS;
+                        }
+                    }
+                }
+                free(rawKey);
+                break;
+            }
+
+            default:
+            {
+                free(page);
+                return IX_TYPE_ERROR;
+            }
+        }
+    }
+    cout<< "did not exists\n";
+    free(page);
+    return IX_TARGET_DOES_EXIST;
+}
+
+unsigned IndexManager::getNextNodePageNum(IXFileHandle ixfileHandle,  unsigned pageNum, AttrType type, const void * key, RID rid)
+{
+    InternalNodeHeader iNodeHeader;
+    InternalNodeEntry iNodeEntry;
+
+    void * page = malloc(PAGE_SIZE);
+    ixfileHandle.readPage(pageNum, page);
+
+    iNodeHeader = getInternalNodeHeader(page);
+
+    void * rawKey;
+    unsigned keyLength;
+    RID tempRid;
+    unsigned ridOffset;
+    unsigned k;
+
+    // compare the keys in entry with search key
+    // find the proper child
+    for (unsigned i = 0; i < iNodeHeader.numOfEntries; i++)
+    {
+        iNodeEntry = getInternalNodeEntry(page, i);
+
+        switch (type)
+        {
+            case TypeInt:
+            {
+                rawKey = malloc(sizeof(int));
+                memcpy(rawKey, (page + iNodeEntry.offset), sizeof(int));
+                if (compareInts(key, rawKey) == GREATER_THAN)
+                {
+                    free(rawKey);
+                    return iNodeEntry.leftChild;
+                }
+                free(rawKey);
+                break;
+            }
+
+            case TypeReal:
+            {
+                rawKey = malloc(sizeof(float));
+                memcpy(rawKey, (page + iNodeEntry.offset), sizeof(float));
+                if (compareReals(key, rawKey) == GREATER_THAN)
+                {
+                    free(rawKey);
+                    return iNodeEntry.leftChild;
+                }
+                free(rawKey);
+                break;
+            }
+
+            case TypeVarChar:
+            {
+                memcpy(&keyLength, (page + iNodeEntry.offset), INT_SIZE);
+                rawKey = malloc(keyLength);
+                memcpy(rawKey, (page + iNodeEntry.offset + sizeof(int)), keyLength);
+
+                if (compareVarChars(key, rawKey) == GREATER_THAN)
+                {
+                    free(rawKey);
+                    return iNodeEntry.leftChild;
+                }
+                free(rawKey);
+                break;
+            }
+        }
+    }
+
+    free(page);
+
+    // when the search key the greatest
+    // the right most child would be the proper position
+    return iNodeEntry.rightChild;
 }

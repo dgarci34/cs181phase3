@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <stack>
 
 #include "../rbf/rbfm.h"
 
@@ -28,10 +29,16 @@
 #define IX_KEY_DOES_NOT_EXIST 14
 #define IX_CONFLICTING_TYPES 15
 #define IX_SPLIT_FAILED 16
+#define IX_PRINT_LEAF_NODE_ERROR 17
+#define IX_PRINT_INTERNAL_NODE_ERROR 18
+#define IX_TREE_ERROR 19
+#define IX_TARGET_DOES_EXIST 20
+#define IX_NOT_FOUND 21
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
 #define FIRST_ENTRY 0
+#define FIRST_RID 0
 #define INITIAL_HEIGHT 0
 #define META_PAGE 0
 #define INITIAL_PAGE 1
@@ -55,6 +62,11 @@ typedef struct IndexId {
     uint32_t pageId;
     uint32_t entryId;
 } IndexId;
+
+typedef struct MetaNode {
+    unsigned pageNum;
+    unsigned height;
+} MetaNode;
 
 // Meta
 typedef struct MetaHeader {
@@ -207,6 +219,10 @@ class IndexManager {
     void injectInternalBefore(void * page, InternalNodeHeader &internalNodeHeader, const void * key, AttrType attrType, unsigned leftChild, unsigned rightChild);
     void injectInternalBetween(void * page, unsigned position, InternalNodeHeader &internalNodeHeader, const void * key, AttrType attrType, unsigned leftChild, unsigned rightChild);
     void injectInternalAfter(void * page, InternalNodeHeader &internalNodeHeader, const void * key, AttrType attrType, unsigned leftChild, unsigned rightChild);
+
+    //searching helpers
+    RC searchLeafNode(IXFileHandle ixfileHandle, unsigned pageNum, AttrType type, const void * key, RID rid, IndexId * indexId);
+    unsigned getNextNodePageNum(IXFileHandle ixfileHandle, unsigned pageNum, AttrType type, const void * key, RID rid);
 };
 
 
@@ -232,9 +248,12 @@ class IX_ScanIterator {
 
         uint32_t currPage;
         uint32_t currEntry;
+        uint32_t currRid;
 
         uint32_t totalLeaves;
         uint16_t totalEntry;
+
+        AttrType attrType;
 
         void * pageData;
         const void * low;
@@ -248,12 +267,15 @@ class IX_ScanIterator {
         IXFileHandle *ixfh;
         vector<IndexId> skipList; //may have to be changed to leaf ids
 
+        // helper functions
         RC scanInit(IXFileHandle &ixfH,
                 const Attribute &attr,
                 const void      *lowKey,
                 const void      *highKey,
                 bool  lowKeyInclusive,
                 bool  highKeyInclusive);
+
+        RC scanCurrPage(RID &rid, void *key);
 
         RC getNextEntry();
         RC getNextPage();
@@ -279,11 +301,24 @@ class IXFileHandle {
     unsigned ixWritePageCounter;
     unsigned ixAppendPageCounter;
 
+    // helper functions
     RC writePage(PageNum pageNum, void * data);
     RC readPage(PageNum pageNum, void * data);
     RC appendPage(void * data);
 
     unsigned getNumberOfPages();
+
+    MetaHeader fhGetMetaHeader(void * page);
+    LeafNodeHeader fhGetLeafNodeHeader(void * page);
+    InternalNodeHeader fhGetInternalNodeHeader(void * page);
+    LeafNodeEntry fhGetLeafNodeEntry(void * page, unsigned slotNumber);
+    InternalNodeEntry fhGetInternalNodeEntry(void * page, unsigned slotNumber);
+    RID getRid(void * page, unsigned offset);
+    void setMetaNode(MetaNode * mNodeEntry, unsigned pageNum, unsigned height);
+
+    RC fhPrintLeafNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> * pageNumStack);
+    RC fhPrintInternalNode(IXFileHandle ixfileHandle, unsigned height, unsigned pageNum, AttrType type, stack<MetaNode> &pageNumStack);
+
     // Constructor
     IXFileHandle();
 
