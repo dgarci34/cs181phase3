@@ -35,6 +35,7 @@
 #define IX_TARGET_DOES_EXIST 20
 #define IX_NOT_FOUND 21
 #define IX_RID_NOT_FOUND 22
+#define IX_RID_DUPLICATE 23
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
@@ -229,6 +230,7 @@ class IndexManager {
     RC deleteRID(void * page, LeafNodeHeader &leafNodeHeader, unsigned entryPos, RID &rid);
     RC clearEntry(void * page, LeafNodeHeader &leafNodeHeader, LeafNodeEntry leafNodeEntry, unsigned entryPos);
 
+    RC checkRidDuplicate(void * page, LeafNodeEntry &leafNodeEntry, RID rid);
 };
 
 

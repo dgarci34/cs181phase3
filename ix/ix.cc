@@ -2519,3 +2519,14 @@ RC IndexManager::clearEntry(void * page, LeafNodeHeader &leafNodeHeader, LeafNod
   setLeafNodeHeader(page, leafNodeHeader);
   return SUCCESS;
 }
+//used to check if there is no prexisting rid in an entry
+RC checkRidDuplicate(void * page, LeafNodeEntry &leafNodeEntry, RID rid){
+  unsigned source = leafNodeEntry.offset + leafNodeEntry.length;
+  //loop and see if there is a memory exiilancy
+  for (unsigned i = 0; i < leafNodeEntry.numberOfRIDs; i++){
+    if(!memcmp(page + source + (i * sizeof(RID)), &rid, sizeof(RID)))
+      return IX_RID_DUPLICATE;
+  }
+  //no duplicate found
+  return SUCCESS;
+}
