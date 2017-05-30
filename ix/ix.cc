@@ -1052,30 +1052,18 @@ RC IndexManager:: compareReals(const void * key, const void * toCompareTo){
 }
 //compares varchar values
 RC IndexManager::compareVarChars(const void * key, const void * toCompareTo){
-  int size1;
-  memcpy(&size1, key, INT_SIZE);
-  int size2;
-  memcpy(&size2, toCompareTo, INT_SIZE);
-  void * pre1 = malloc(size1 +1);
-  char * cast1 = (char*)pre1;
-  memcpy(cast1, key + INT_SIZE,size1);
-  free(pre1);
-  void * pre2 = malloc (size2 +1);
-  char * cast2 = (char *)pre2;
-  memcpy(cast2, toCompareTo + INT_SIZE, size2);
-  free(pre2);
-  string str1 = "";
-  string str2 = "";
-  for (int i =0; i < size1; i ++)
-    str1[i] = cast1[i];
-  for (int i =0; i < size2; i++)
-    str2[i] = cast2[i];
-    int compare = str1.compare(str2);
-   if (compare > 0)
-    return GREATER_THAN;
-  else if (compare < 0)
+//  cout<< "comparing var chars\n";
+  int size1 = ((int*)key)[0];
+  int size2 = ((int*)toCompareTo)[0];
+  char cast1[size1];
+  char cast2[size2];
+  string str1 = cast1 + '\0';
+  string str2 = cast2 + '\0';
+   if (str1 == str2)
+    return EQUAL_TO;
+  else if (str1 < str2)
     return LESS_THAN;
-  return EQUAL_TO;
+  return GREATER_THAN;
 
 }
 //returns the key at offset
