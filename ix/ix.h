@@ -36,6 +36,9 @@
 #define IX_NOT_FOUND 21
 #define IX_RID_NOT_FOUND 22
 #define IX_RID_DUPLICATE 23
+#define IX_NOTHING_TO_DELETE 24
+#define IX_NO_MATCHING_RID_TO_DELETE 25
+#define IX_NO_SCAN_FILE 26
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
@@ -160,7 +163,7 @@ class IndexManager {
     bool pfmPtr;
 
     // **************************** Helper Function **********************t ******
-    bool fileExists(const string &fileName);
+    static bool fileExists(const string &fileName);
     void setKey(unsigned keyNum, void* data, unsigned size);
     void printKey(const void * key, AttrType attrType);
     void printRids(void * page, LeafNodeEntry leafNodeEntry);
@@ -227,7 +230,7 @@ class IndexManager {
     unsigned getNextNodePageNum(IXFileHandle ixfileHandle, unsigned pageNum, AttrType type, const void * key, RID rid);
 
     //memory delete helpers
-    RC deleteRID(void * page, LeafNodeHeader &leafNodeHeader, unsigned entryPos, RID &rid);
+    RC deleteRID(void * page, LeafNodeHeader &leafNodeHeader, unsigned entryPos,const  RID &rid);
     RC clearEntry(void * page, LeafNodeHeader &leafNodeHeader, LeafNodeEntry leafNodeEntry, unsigned entryPos);
 
     RC checkRidDuplicate(void * page, LeafNodeEntry &leafNodeEntry, RID rid);

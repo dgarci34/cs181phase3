@@ -37,6 +37,7 @@ RC IndexManager::destroyFile(const string &fileName)
     pfm = PagedFileManager::instance();
     if (pfm->destroyFile(fileName))
         return IX_DESTROY_ERROR;
+      cout<< "destroyFile\n";
     return SUCCESS;
 }
 
@@ -333,39 +334,179 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     if(ixfileHandle.writePage(childPageNum,pageData))
       return IX_WRITE_FAILED;
   free(pageData);
-/*	cout<< "check---------------------------------------------\n";
-  void * checkPage = malloc(PAGE_SIZE);
-	ixfileHandle.readPage(mHeader.rootPage, checkPage);
-	InternalNodeHeader hCheck = getInternalNodeHeader(checkPage);
-	showInternalKeysAndChildren(checkPage, attribute.type);
-  ixfileHandle.readPage(META_PAGE, checkPage);
-  showMetaHeaderStatistics(checkPage);
-  MetaHeader mCheck = getMetaHeader(checkPage);
-  if (mCheck.numOfLeafNodes == 4){
-    ixfileHandle.readPage(1, checkPage);
-    LeafNodeHeader lCheck = getLeafNodeHeader(checkPage);
-    cout<< "page 1 left, right: "<<lCheck.leftNode<<" "<<lCheck.rightNode<<endl;
-    ixfileHandle.readPage(2, checkPage);
-    lCheck = getLeafNodeHeader(checkPage);
-    cout<< "page 2 left, right: "<<lCheck.leftNode<<" "<<lCheck.rightNode<<endl;
-    ixfileHandle.readPage(4, checkPage);
-    lCheck = getLeafNodeHeader(checkPage);
-    cout<< "page 4 left, right: "<<lCheck.leftNode<<" "<<lCheck.rightNode<<endl;
-    ixfileHandle.readPage(5, checkPage);
-    lCheck = getLeafNodeHeader(checkPage);
-    cout<< "page 5 left, right: "<<lCheck.leftNode<<" "<<lCheck.rightNode<<endl;
-  }
-  ixfileHandle.readPage(2, checkPage);
-
-//  cout<< "free space: "<< getInternalFreeSpace(hCheck)<<endl;
-
-  free(checkPage);*/
   return SUCCESS;
-
 }
 
+RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid){
+      //if no pages yet begin new tree
+      if (!ixfileHandle.getNumberOfPages())
+        initializeBTree(ixfileHandle, attribute.type);
+      //get meta header
+      void * pageData =  malloc(PAGE_SIZE);
+      if (ixfileHandle.readPage(META_PAGE, pageData))
+        return IX_READ_FAILED;
+      MetaHeader mHeader = getMetaHeader(pageData);
+      if (mHeader.type != attribute.type)
+        return IX_CONFLICTING_TYPES;
 
-RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
+      //begin at the root
+  //    cout<< "root is at: "<<mHeader.rootPage<<endl;
+      ixfileHandle.readPage(mHeader.rootPage, pageData);
+      unsigned childPageNum = INITIAL_PAGE;
+      bool childFound = false;
+
+      //this will loop through intrnal nodes if any exists
+      InternalNodeHeader iHeader;
+      InternalNodeEntry iEntry;
+      void * keyInMemory;                 //key you extract and compare to
+      for (unsigned i =mHeader.height; i > 0; i--){
+  //      cout<< "iterating through height "<< i<<endl;
+        iHeader = getInternalNodeHeader(pageData);
+        //compare through internal node values
+        for (unsigned j = 0; j < iHeader.numOfEntries; j++){
+  //        cout<< "comparing entries\n";
+          iEntry = getInternalNodeEntry(pageData, j);
+          //compare based on type
+          switch (attribute.type) {
+            case TypeInt:
+            {
+              keyInMemory = malloc(INT_SIZE);
+              getKeyAtOffset(pageData, keyInMemory,iEntry.offset, iEntry.length);
+              int compare = compareInts(key, keyInMemory);
+              if (compare == LESS_THAN || compare == EQUAL_TO){
+                childPageNum = iEntry.leftChild;
+                childFound = true;
+              }
+              //if greater than and at the last follow rightchild
+              else if(j == iHeader.numOfEntries -1){
+                childPageNum = iEntry.rightChild;
+                childFound = true;
+              }
+              free(keyInMemory);
+              break;
+            }
+            case TypeReal:
+            {
+              keyInMemory = malloc(REAL_SIZE);
+              getKeyAtOffset(pageData, keyInMemory,iEntry.offset, iEntry.length);
+              int compare = compareReals(key, keyInMemory);
+              if (compare == LESS_THAN|| compare == EQUAL_TO){
+                childPageNum = iEntry.leftChild;
+                childFound = true;
+              }
+              //if greater than and at the last follow rightchild
+              else if(j == iHeader.numOfEntries -1){
+                childPageNum = iEntry.rightChild;
+                childFound = true;
+              }
+              free(keyInMemory);
+              break;
+            }
+            case TypeVarChar:
+            {
+              keyInMemory = malloc(iEntry.length);
+              getKeyAtOffset(pageData, keyInMemory,iEntry.offset, iEntry.length);
+              int compare = compareVarChars(key, keyInMemory);
+              if (compare == LESS_THAN || compare == EQUAL_TO){
+                childPageNum = iEntry.leftChild;
+                childFound = true;
+              }
+              //if greater than and at the last follow rightchild
+              else if(j == iHeader.numOfEntries -1){
+                childPageNum = iEntry.rightChild;
+                childFound = true;
+              }
+              free(keyInMemory);
+              break;
+            }
+          }
+          if (childFound){
+            //found locaion for child node, check next height
+            ixfileHandle.readPage(childPageNum, pageData);
+            childFound = false;
+            break;
+          }
+        }
+      }
+      LeafNodeHeader lHeader = getLeafNodeHeader(pageData);
+//      cout<< lHeader.numOfEntries<<" has this many entries"<<endl;
+      if (!lHeader.numOfEntries){
+        free(pageData);
+        return IX_NOTHING_TO_DELETE;
+      }
+      LeafNodeEntry lEntry;
+      //in the right page
+      void * currentKey;
+      bool spotFound = false;
+      bool addedRID = false;
+      int spot = 0;
+  //    cout<< "number of entries in header: "<< lHeader.numOfEntries<<endl;
+      for (unsigned i = 0; i < lHeader.numOfEntries; i ++){
+  //      cout<< "looking over entry "<<i<<" ";
+          lEntry = getLeafNodeEntry(pageData, i);
+          currentKey = malloc(lEntry.length);
+          getKeyAtOffset(pageData, currentKey, lEntry.offset, lEntry.length);
+          switch (attribute.type) {
+              case TypeInt:
+              {
+                  int compare = compareInts(key,currentKey);
+                  if (compare == EQUAL_TO){
+                    if (deleteRID(pageData, lHeader, i, rid)){
+                      free(pageData);
+                      return IX_NO_MATCHING_RID_TO_DELETE;
+                    }
+                    else{
+                      ixfileHandle.writePage(childPageNum, pageData);
+                      free(pageData);
+                      return SUCCESS;
+                    }
+                  }
+                  break;
+              }
+              case TypeReal:
+              {
+                  int compare = compareReals(key,currentKey);
+                  if (compare == EQUAL_TO){
+                    if (deleteRID(pageData, lHeader, i, rid)){
+                      ixfileHandle.writePage(childPageNum, pageData);
+                      free(pageData);
+                      return IX_NO_MATCHING_RID_TO_DELETE;
+                    }
+                    else{
+                      ixfileHandle.writePage(childPageNum, pageData);
+                      free(pageData);
+                      return SUCCESS;
+                    }
+                  }
+                  break;
+              }
+              case TypeVarChar:
+              {
+                  int compare = compareVarChars(key,currentKey);
+                  if (compare == EQUAL_TO){
+                    if (deleteRID(pageData, lHeader, i, rid)){
+                      ixfileHandle.writePage(childPageNum, pageData);
+                      free(pageData);
+                      return IX_NO_MATCHING_RID_TO_DELETE;
+                    }
+                    else{
+                      ixfileHandle.writePage(childPageNum, pageData);
+                      free(pageData);
+                      return SUCCESS;
+                    }
+                  }
+                  break;
+              }
+          }
+          free(currentKey);
+      }
+    //iterated through everything and no matching key
+    free(pageData);
+    return IX_NOTHING_TO_DELETE;
+  }
+
+
+/*RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
     MetaHeader mHeader;
     unsigned treeHeight;
@@ -414,7 +555,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     // tbc -- mcmcpy the record
 
     return SUCCESS;
-}
+}*/
 
 
 
@@ -426,7 +567,9 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
         bool        	highKeyInclusive,
         IX_ScanIterator &ix_ScanIterator)
 {
-    return ix_ScanIterator.scanInit(ixfileHandle, attribute, lowKey, highKey, lowKeyInclusive, highKeyInclusive);
+  if(!IndexManager::fileExists(ixfileHandle.fileName))
+    return IX_NO_SCAN_FILE;
+  return ix_ScanIterator.scanInit(ixfileHandle, attribute, lowKey, highKey, lowKeyInclusive, highKeyInclusive);
 }
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const{
@@ -2459,8 +2602,9 @@ unsigned IndexManager::getNextNodePageNum(IXFileHandle ixfileHandle,  unsigned p
     return iNodeEntry.rightChild;
 }
 //physical deletion of an rid in memory
-RC IndexManager::deleteRID(void * page, LeafNodeHeader &leafNodeHeader, unsigned entryPos, RID &rid){
+RC IndexManager::deleteRID(void * page, LeafNodeHeader &leafNodeHeader, unsigned entryPos,const RID &rid){
   //iterate through rids see if there is a match
+//  cout<< "deleting rid\n";
   LeafNodeEntry leafNodeEntry = getLeafNodeEntry(page, entryPos);
   LeafNodeEntry itr;
   unsigned dest;
@@ -2500,9 +2644,11 @@ RC IndexManager::deleteRID(void * page, LeafNodeHeader &leafNodeHeader, unsigned
 //physically clear and entire entry
 RC IndexManager::clearEntry(void * page, LeafNodeHeader &leafNodeHeader, LeafNodeEntry leafNodeEntry, unsigned entryPos){
   //shift memory right over key and rid
+//  cout<< "clearing entry\n";
   unsigned dest = leafNodeHeader.freeSpaceOffset + leafNodeEntry.length + sizeof(RID);
   unsigned source = leafNodeHeader.freeSpaceOffset;
   unsigned byteSize = leafNodeEntry.offset - leafNodeHeader.freeSpaceOffset;
+//  cout<< "dest, source, byteSize: "<< dest<< " "<< source<< " "<< byteSize<<endl;
   void * temp = malloc(byteSize);
   memcpy(temp, page + source, byteSize);
   memcpy(page + dest, temp, byteSize);
@@ -2510,21 +2656,27 @@ RC IndexManager::clearEntry(void * page, LeafNodeHeader &leafNodeHeader, LeafNod
   //update all following offsets
   LeafNodeEntry itr;
   for(unsigned i = entryPos +1; i < leafNodeHeader.numOfEntries; i ++){
+//    cout<< "changing offset\n";
     itr = getLeafNodeEntry(page, i);
     itr.offset = itr.offset + leafNodeEntry.length + sizeof(RID);
     setLeafNodeEntry(page, itr, i);
   }
+//  cout<< "offsets done\n";
   //move following entries left to remove original entry
   dest = sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * entryPos);
   source = sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * (entryPos +1));
-  byteSize = sizeof(LeafNodeEntry) * (leafNodeHeader.numOfEntries - leafNodeHeader.numOfEntries -1);
+  byteSize = sizeof(LeafNodeEntry) * (leafNodeHeader.numOfEntries - entryPos -1);
+//  cout<< "dest, source, byteSize: "<< dest<< " "<< source<< " "<< byteSize<<endl;
   temp = malloc(byteSize);
   memcpy(temp, page + source, byteSize);
   memcpy(page + dest, temp, byteSize);
   free(temp);
+//  cout<< "memcpy done\n";
   leafNodeHeader.numOfEntries--;
+//  cout<< "entries left: "<< leafNodeHeader.numOfEntries<<endl;
   leafNodeHeader.freeSpaceOffset = leafNodeHeader.freeSpaceOffset + leafNodeEntry.length + sizeof(RID);
   setLeafNodeHeader(page, leafNodeHeader);
+//  showLeafOffsetsAndLengths(page);
   return SUCCESS;
 }
 //used to check if there is no prexisting rid in an entry
