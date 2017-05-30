@@ -1,11 +1,11 @@
 1. Basic information
 Team number (e.g., 01) : 16
-#1 Student ID :
-#1 Student Name :
-#2 Student ID :
-#2 Student Name :
-#3 Student ID :
-#3 Student Name :
+#1 Student ID : 1499939
+#1 Student Name : Ion Fong Chan
+#2 Student ID : 1401508
+#2 Student Name : Diego Garcia
+#3 Student ID :1440270
+#3 Student Name : Sean Laney
 
 2. Meta-data page in an index file
 - Show your meta-data page of an index design if you have any.
@@ -59,7 +59,7 @@ typedef struct LeafNodeHeader {
     unsigned parentPage;
     unsigned selfPage;
     unsigned leftNode;
-    unsigned rightNode;
+    unsigned rightNode;insertEntry
 } LeafNodeHeader;
 
 typedef struct LeafNodeEntry {
@@ -76,10 +76,20 @@ the key is and the key length after the length beings all rids that the key has
 5. Implementation Detail
 - Have you implemented non-lazy deletion? Choose Yes or No: Also provide implementation details if yes.
 
-somewhat. when an rid is deleted we shift the data over that deleted rid but the key remains
+yes, when we are passed in a key to delete call deleteRID which iterate through
+all rids and see if there is a match if there is a match we do memcpy over the deleted
+rid and manupulate offsets to account for this. if this is the last rid of an entry
+we shift the memory over both the key id and the rid and shift entries left over
+the leaf node entry so that free space is opened up. look through deleteRID and
+clearEntry for evidence of this
 
 - Other implementation details:
 
 
 6. Other (optional)
 - Freely use this section to tell us about things that are related to the project 3, but not related to the other sections (optional)
+
+some of the tests sefault without valgrind and they say that we have an invalid
+free but we were unable to locate it. we suspect this is due to varchars and how we
+perform pointer arithmetic on them but we were unable to fix it With valgrind
+ they run just fine.

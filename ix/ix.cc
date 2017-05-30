@@ -37,7 +37,7 @@ RC IndexManager::destroyFile(const string &fileName)
     pfm = PagedFileManager::instance();
     if (pfm->destroyFile(fileName))
         return IX_DESTROY_ERROR;
-      cout<< "destroyFile\n";
+//      cout<< "destroyFile\n";
     return SUCCESS;
 }
 
@@ -1052,17 +1052,23 @@ RC IndexManager:: compareReals(const void * key, const void * toCompareTo){
 }
 //compares varchar values
 RC IndexManager::compareVarChars(const void * key, const void * toCompareTo){
-  int *size1 = (int*)key;
-  int *size2 = (int*)toCompareTo;
-  char * cast1 = (char*)key;
-  char * cast2 = (char*)toCompareTo;
-  cast1 += INT_SIZE;
-  cast2 += INT_SIZE;
+  int size1;
+  memcpy(&size1, key, INT_SIZE);
+  int size2;
+  memcpy(&size2, toCompareTo, INT_SIZE);
+  void * pre1 = malloc(size1 +1);
+  char * cast1 = (char*)pre1;
+  memcpy(cast1, key + INT_SIZE,size1);
+  free(pre1);
+  void * pre2 = malloc (size2 +1);
+  char * cast2 = (char *)pre2;
+  memcpy(cast2, toCompareTo + INT_SIZE, size2);
+  free(pre2);
   string str1 = "";
   string str2 = "";
-  for (int i =0; i < size1[0]; i ++)
+  for (int i =0; i < size1; i ++)
     str1[i] = cast1[i];
-  for (int i =0; i < size2[0]; i++)
+  for (int i =0; i < size2; i++)
     str2[i] = cast2[i];
     int compare = str1.compare(str2);
    if (compare > 0)
@@ -1233,7 +1239,7 @@ RC IndexManager::pushUpSplitKey(unsigned pageNum, MetaHeader &metaHeader, IXFile
     for (unsigned i =0; i < iHeader.numOfEntries; i ++){
 //        cout<< "looking through internal entries\n";
         iEntry = getInternalNodeEntry(tempPage, i);
-        keyInMemory = malloc(iEntry.length);
+        keyInMemory = malloc(iEntry.length + INT_SIZE);
         getKeyAtOffset(tempPage, keyInMemory, iEntry.offset, iEntry.length);
         switch(attrType)
         {
@@ -1289,7 +1295,7 @@ RC IndexManager::pushUpSplitKey(unsigned pageNum, MetaHeader &metaHeader, IXFile
     }
   }
   else{
-    cout<<"does not fit\n";
+//    cout<<"does not fit\n";
     //split the parent node recusively until it fits
     unsigned splitPos = iHeader.numOfEntries / 2;
     unsigned splitReturn =0;
@@ -1409,7 +1415,7 @@ unsigned IndexManager::getInternalFreeSpace(InternalNodeHeader internalNodeHeade
 }
 //splits an internal node at the midpoint
 RC IndexManager::splitInternalAtEntry(void * page, MetaHeader &metaHeader, InternalNodeHeader &internalNodeHeader, IXFileHandle &ixfileHandle, unsigned midpoint){
-  cout<<"spliting an internal node\n";
+//  cout<<"spliting an internal node\n";
   //make another internal node
   InternalNodeEntry midEntry = getInternalNodeEntry(page, midpoint);
   InternalNodeHeader rightHeader;
