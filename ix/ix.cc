@@ -2450,3 +2450,72 @@ unsigned IndexManager::getNextNodePageNum(IXFileHandle ixfileHandle,  unsigned p
     // the right most child would be the proper position
     return iNodeEntry.rightChild;
 }
+//physical deletion of an rid in memory
+RC IndexManager::deleteRID(void * page, LeafNodeHeader &leafNodeHeader, unsigned entryPos, RID &rid){
+  //iterate through rids see if there is a match
+  LeafNodeEntry leafNodeEntry = getLeafNodeEntry(page, entryPos);
+  LeafNodeEntry itr;
+  unsigned dest;
+  unsigned source;
+  unsigned byteSize;
+  void * temp;
+  for(int i =0; i <leafNodeEntry.numberOfRIDs; i++){
+    if(!memcmp(page + leafNodeEntry.offset + leafNodeEntry.length + (i * sizeof(RID)), &rid, sizeof(RID))){
+      //there is a match
+      if (leafNodeEntry.numberOfRIDs ==1){
+        //clear the entire thing
+        return clearEntry(page, leafNodeHeader, leafNodeEntry, entryPos);
+      }
+      //clear a single entry
+      dest = leafNodeHeader.freeSpaceOffset + sizeof(RID);
+      source = leafNodeHeader.freeSpaceOffset;
+      byteSize = leafNodeEntry.offset + leafNodeEntry.length + (sizeof(RID) * i) - leafNodeHeader.freeSpaceOffset;
+      temp = malloc(byteSize);
+      memcpy(temp, page + source, byteSize);
+      memcpy(page + dest, temp, byteSize);
+      free(temp);
+      leafNodeEntry.offset += sizeof(RID);
+      leafNodeHeader.freeSpaceOffset += sizeof(rid);
+      leafNodeEntry.numberOfRIDs--;
+      for (unsigned i = entryPos + 1; i <leafNodeHeader.numOfEntries; i ++){
+        itr = getLeafNodeEntry(page, i);
+        itr.offset += sizeof(RID);
+        setLeafNodeEntry(page, itr, i);
+      }
+      setLeafNodeHeader(page, leafNodeHeader);
+      setLeafNodeEntry(page, leafNodeEntry, entryPos);
+      return SUCCESS;
+    }
+  }
+  return IX_RID_NOT_FOUND;
+}
+//physically clear and entire entry
+RC IndexManager::clearEntry(void * page, LeafNodeHeader &leafNodeHeader, LeafNodeEntry leafNodeEntry, unsigned entryPos){
+  //shift memory right over key and rid
+  unsigned dest = leafNodeHeader.freeSpaceOffset + leafNodeEntry.length + sizeof(RID);
+  unsigned source = leafNodeHeader.freeSpaceOffset;
+  unsigned byteSize = leafNodeEntry.offset - leafNodeHeader.freeSpaceOffset;
+  void * temp = malloc(byteSize);
+  memcpy(temp, page + source, byteSize);
+  memcpy(page + dest, temp, byteSize);
+  free(temp);
+  //update all following offsets
+  LeafNodeEntry itr;
+  for(unsigned i = entryPos +1; i < leafNodeHeader.numOfEntries; i ++){
+    itr = getLeafNodeEntry(page, i);
+    itr.offset = itr.offset + leafNodeEntry.length + sizeof(RID);
+    setLeafNodeEntry(page, itr, i);
+  }
+  //move following entries left to remove original entry
+  dest = sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * entryPos);
+  source = sizeof(LeafNodeHeader) + (sizeof(LeafNodeEntry) * (entryPos +1));
+  byteSize = sizeof(LeafNodeEntry) * (leafNodeHeader.numOfEntries - leafNodeHeader.numOfEntries -1);
+  temp = malloc(byteSize);
+  memcpy(temp, page + source, byteSize);
+  memcpy(page + dest, temp, byteSize);
+  free(temp);
+  leafNodeHeader.numOfEntries--;
+  leafNodeHeader.freeSpaceOffset = leafNodeHeader.freeSpaceOffset + leafNodeEntry.length + sizeof(RID);
+  setLeafNodeHeader(page, leafNodeHeader);
+  return SUCCESS;
+}

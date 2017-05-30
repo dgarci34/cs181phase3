@@ -34,6 +34,7 @@
 #define IX_TREE_ERROR 19
 #define IX_TARGET_DOES_EXIST 20
 #define IX_NOT_FOUND 21
+#define IX_RID_NOT_FOUND 22
 
 #define NO_PAGE 0
 #define NO_ENTRIES 0
@@ -223,6 +224,11 @@ class IndexManager {
     //searching helpers
     RC searchLeafNode(IXFileHandle ixfileHandle, unsigned pageNum, AttrType type, const void * key, RID rid, IndexId * indexId);
     unsigned getNextNodePageNum(IXFileHandle ixfileHandle, unsigned pageNum, AttrType type, const void * key, RID rid);
+
+    //memory delete helpers
+    RC deleteRID(void * page, LeafNodeHeader &leafNodeHeader, unsigned entryPos, RID &rid);
+    RC clearEntry(void * page, LeafNodeHeader &leafNodeHeader, LeafNodeEntry leafNodeEntry, unsigned entryPos);
+
 };
 
 
