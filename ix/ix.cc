@@ -76,12 +76,9 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid){
     //if no file error
-//    cout<<"filename: "<<ixfileHandle.fileName<< " ";
-//    printKey(key, attribute.type);
-//	  cout<<endl;
     if (ixfileHandle.fileName == "")
       return IX_FILE_DN_EXIST;
-    //if no pages yet beging new tree
+    //if no pages yet begin new tree
     if (!ixfileHandle.getNumberOfPages())
       initializeBTree(ixfileHandle, attribute.type);
     //get meta header
@@ -171,7 +168,6 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         }
       }
     }
-//    cout<< "checked height\n";
     //traversed through internal nodes now at leaf
     LeafNodeHeader lHeader = getLeafNodeHeader(pageData);
     LeafNodeEntry lEntry;
@@ -254,7 +250,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
                 int compare = compareInts(key,currentKey);
                 if (compare == EQUAL_TO){
 //                  cout<< "equal things so add rid\n";
-                  addAdditionalRID(pageData, lHeader, lEntry, rid, i);
+                  if (addAdditionalRID(pageData, lHeader, lEntry, rid, i)){
+                    free(pageData);
+                    return IX_RID_DUPLICATE;
+                  }
                   addedRID = true;
                 }
                 else if(compare == LESS_THAN){
@@ -272,7 +271,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
                 int compare = compareReals(key,currentKey);
                 if (compare == EQUAL_TO){
 //                  cout<< "equal things so add rid\n";
-                  addAdditionalRID(pageData, lHeader, lEntry, rid, i);
+                  if (addAdditionalRID(pageData, lHeader, lEntry, rid, i)){
+                    free(pageData);
+                    return IX_RID_DUPLICATE;
+                  }
                   addedRID = true;
                 }
                 else if(compare == LESS_THAN){
@@ -286,7 +288,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
                 int compare = compareVarChars(key,currentKey);
                 if (compare == EQUAL_TO){
 //                  cout<< "equal things so add rid\n";
-                  addAdditionalRID(pageData, lHeader, lEntry, rid, i);
+                  if (addAdditionalRID(pageData, lHeader, lEntry, rid, i)){
+                    free(pageData);
+                    return IX_RID_DUPLICATE;
+                  }
                   addedRID = true;
                 }
                 else if(compare == LESS_THAN){
@@ -1525,9 +1530,11 @@ void IndexManager::printRids(void * page, LeafNodeEntry leafNodeEntry){
 }
 
 //adds an aditional RID to an existing leaf entry
-void IndexManager::addAdditionalRID(void * page,LeafNodeHeader leafNodeHeader, LeafNodeEntry leafNodeEntry, RID newRid, unsigned entryPos){
+RC IndexManager::addAdditionalRID(void * page,LeafNodeHeader leafNodeHeader, LeafNodeEntry leafNodeEntry, RID newRid, unsigned entryPos){
   //move data left
 //  cout<< "size ="<<leafNodeEntry.length+ sizeof(RID)<<endl;
+  if(checkRidDuplicate(page, leafNodeEntry, newRid))
+    return IX_RID_DUPLICATE;
   unsigned dest = leafNodeHeader.freeSpaceOffset - sizeof(RID);
   unsigned source = leafNodeHeader.freeSpaceOffset;
 //  cout<<"preiviously has this many rid's: "<<leafNodeEntry.numberOfRIDs<<endl;
@@ -1555,6 +1562,7 @@ void IndexManager::addAdditionalRID(void * page,LeafNodeHeader leafNodeHeader, L
   memcpy(page + leafNodeEntry.offset + leafNodeEntry.length + (leafNodeEntry.numberOfRIDs * sizeof(RID)), &newRid, sizeof(RID));
   leafNodeEntry.numberOfRIDs++;
   setLeafNodeEntry(page, leafNodeEntry, entryPos);
+  return SUCCESS;
 }
 //used to display everything in a leaf for debbugging purposes
 void IndexManager::showLeaf(void * page, AttrType attrType){
@@ -2520,7 +2528,7 @@ RC IndexManager::clearEntry(void * page, LeafNodeHeader &leafNodeHeader, LeafNod
   return SUCCESS;
 }
 //used to check if there is no prexisting rid in an entry
-RC checkRidDuplicate(void * page, LeafNodeEntry &leafNodeEntry, RID rid){
+RC IndexManager::checkRidDuplicate(void * page, LeafNodeEntry &leafNodeEntry, RID rid){
   unsigned source = leafNodeEntry.offset + leafNodeEntry.length;
   //loop and see if there is a memory exiilancy
   for (unsigned i = 0; i < leafNodeEntry.numberOfRIDs; i++){
