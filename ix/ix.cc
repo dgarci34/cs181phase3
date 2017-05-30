@@ -2190,9 +2190,8 @@ RC IX_ScanIterator::scanCurrPage(RID &rid, void *key)
 
                 currRid = FIRST_RID;
                 currEntry += 1;
+                free(tempKey);
             }
-
-            free(tempKey);
             break;
         }
 
@@ -2285,9 +2284,9 @@ RC IX_ScanIterator::scanCurrPage(RID &rid, void *key)
                 // go the the next entry
                 currRid = FIRST_RID;
                 currEntry += 1;
+                free(tempKey);
             }
 
-            free(tempKey);
             break;
         }
 
@@ -2383,9 +2382,9 @@ RC IX_ScanIterator::scanCurrPage(RID &rid, void *key)
                 // go the the next entry
                 currRid = FIRST_RID;
                 currEntry += 1;
+                free(tempKey);
             }
 
-            free(tempKey);
             break;
         }
 
